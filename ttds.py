@@ -1,7 +1,8 @@
 import re
+import os
+from natsort import natsorted
 from nltk.stem import PorterStemmer
 import numpy as np
-from matplotlib import pyplot as plt
 from scipy import special
 
 class SearchEngine(object):
@@ -9,6 +10,11 @@ class SearchEngine(object):
     def __init__(self):
         self.stop_words = open("englishST.txt", "r")
         self.ps = PorterStemmer()
+        # Initialize the dictionary.
+        self.pos_index = {}
+ 
+        # Initialize the file mapping (fileno -> file name).
+        self.file_map = {}
         
         # Getting List of Stop word's ready: Getting rid of punctuation
         # i.e you'll becomes youll
@@ -21,10 +27,10 @@ class SearchEngine(object):
     
     def preprocessing(self, documentName):
         # Opening the file
-        f = open(documentName, "r")
+        f = open("input_files/"+ documentName, "r", encoding = "ascii", errors ="surrogateescape")
         
         # Getting output file ready
-        out = open(documentName.replace(".txt","_out.txt"), "w")
+        out = open("output_files/"+ documentName.replace(".txt","_out.txt"), "w")
 
         # Reading the file line by line
         lines = f.readlines()
@@ -38,23 +44,56 @@ class SearchEngine(object):
             out.write(res)
         out.close()
         
-        
+    def inverted_index(self):
+        fileno = 0
+        file_names = natsorted(os.listdir("output_files"))
+        for file in file_names:
+            with open("output_files/" + file, 'r', encoding ="ascii", errors ="surrogateescape") as f:
+                file_array = f.read().split(' ')
+            f.close()
+            for pos, term in enumerate(file_array):
+                    if term in self.pos_index:
+                        # Increment total freq by 1.
+                        self.pos_index[term][0] = self.pos_index[term][0] + 1
+                        # Check if the term has existed in that DocID before.
+                        if fileno in self.pos_index[term][1]:
+                            self.pos_index[term][1][fileno].append(pos)
+                        else:
+                            self.pos_index[term][1][fileno] = [pos]
+                    # If term does not exist in the positional index dictionary
+                    # (first encounter).
+                    else:
+                         
+                        # Initialize the list.
+                        self.pos_index[term] = []
+                        # The total frequency is 1.
+                        self.pos_index[term].append(1)
+                        # The postings list is initially empty.
+                        self.pos_index[term].append({})     
+                        # Add doc ID to postings list.
+                        self.pos_index[term][1][fileno] = [pos]
+ 
+            # Map the file no. to the file name.
+            self.file_map[fileno] = "input/" + file
+ 
+            # Increment the file no. counter for document ID mapping             
+            fileno += 1
 
-        # frequency = {}
-        # open_file = open(r"C:\Users\kenza\Downloads\bible_out.txt", 'r')
-        # file_to_string = open_file.read()
-        # words = re.findall(r'(\b[A-Za-z][a-z]{2,9}\b)', file_to_string)
 
-        # for word in words:
-        #     count = frequency.get(word,0)
-        #     frequency[word] = count + 1
-
-        # counts = frequency.values()
-        # tokens = frequency.keys()
-
-        # s = np.array(counts)
-        # from scipy.stats import itemfreq
-        # tmp = itemfreq(counts)
 if __name__ == '__main__':
     se = SearchEngine()
+    print("preprocessing bible text")
     se.preprocessing("bible.txt")
+    print("preprocessing abstracts wiki text")
+    se.preprocessing("abstracts.wiki.txt")
+    print("Generating inverted index")
+    se.inverted_index()
+    print("Success! Inverted Positional Index Generated!")
+    
+    print("For term grass: ")
+    print(se.pos_index["grass"])
+    
+    file_list = se.pos_index["grass"][1]
+    print("Filename, [Positions]")
+    for fileno, positions in file_list.items():
+        print(se.file_map[fileno], positions)
