@@ -189,13 +189,14 @@ class SearchEngine(object):
         n_query = query[2:].strip()
         res = "none"
         op = ' '.join(re.findall("(?:OR)?(?:AND)?(?:NOT)?", n_query)).strip()
-        print(op)
+        print(query)
         if "NOT" in query:
             terms = re.split("(?:OR)?(?:AND)? NOT", n_query)
             for i in range(2):
                 if "\"" in terms[i]:
                     res = self.phraseSearch(terms[i])
-                    print(res)
+                    tmp = (res, i)
+                    print(tmp)
             if res == "none":
                 out1 = self.pos_index[terms[0].strip()][1]
                 out2 = [x for x in no_of_files_list
@@ -212,7 +213,8 @@ class SearchEngine(object):
                     for o in out:
                         self.boolRes.append((query[0], str(o)))
         else:
-            terms = re.split("(?:OR)?(?:AND)?", n_query)
+            terms = n_query.replace("OR", "").replace("AND", "").strip().split(' ',1)
+            print(terms)
             for i in range(2):
                 if "\"" in terms[i]:
                     res = self.phraseSearch(terms[i])
@@ -237,12 +239,12 @@ class SearchEngine(object):
         f = open(file)
         lines = f.readlines()
         for line in lines:
-            if "#" in line:
+            if "AND" in line or "OR" in line or "NOT" in line:
+                self.booleanSearch(line)
+            elif "#" in line:
                 self.proximitySearch(line)
             elif "\"" in line:
                 self.phraseSearch(line)
-            elif "AND" in line or "OR" in line or "NOT" in line:
-                self.booleanSearch(line)
             # CASE WHERE THE QUERY ONLY CONTAINS A SINGLE WORD
             elif len(line[2:].split(' ')) == 1:
                 docs = self.pos_index[line[2:].strip()][1]
