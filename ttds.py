@@ -101,7 +101,42 @@ class SearchEngine(object):
         print("bool search it is")
 
     def phraseSearch(self, query):
-        print("phrase search it is")
+        terms = query.replace("\"", "").split()
+        term1 = terms[0]
+        term2 = terms[1]
+
+        # TOKENIZATION + CASE FOLDING + STEMMING
+        term1 = ''.join(re.findall('\\w+', term1))
+        term1 = self.ps.stem(term1.lower())
+        term2 = ''.join(re.findall('\\w+', term2))
+        term2 = self.ps.stem(term2.lower())
+
+        # SEARCH IN POSITIONAL INDEX ONLY IF BOTH TERMS EXIST
+        if (term1 in self.pos_index and term2 in self.pos_index):
+            # GETTING THE DOC IDS THAT CONTAIN BOTH TERM
+            out1 = [doc_id for doc_id in self.pos_index[term1][1]]
+            out2 = [doc_id for doc_id in self.pos_index[term2][1]]
+            intersec = out1 and out2
+            # IF THE INTERSECTION IS NULL WE STOP THE SEARCH
+            if intersec == []:
+                return "No results"
+            for i in intersec:
+                # GETTING THE TERMS POSITIONS FOR EACH DOC
+                positions_1 = self.pos_index[term1][1][i]
+                positions_2 = self.pos_index[term2][1][i]
+
+                len1 = len(positions_1)
+                len2 = len(positions_2)
+                k = j = 0
+                while k != len1:
+                    while j != len2:
+                        if abs(positions_1[k] - positions_2[j] == 1):
+                            if not(query[0], str(i)) in self.boolRes:
+                                self.boolRes.append((query[0], str(i)))
+                        elif positions_2[j] > positions_1[k]:
+                            break
+                        j += 1
+                    k += 1
 
     def proximitySearch(self, query):
         # FINDING INTEGER PROXIMITY
@@ -142,7 +177,7 @@ class SearchEngine(object):
                 while k != len1:
                     while j != len2:
                         if abs(positions_1[k] - positions_2[j] <= proximity):
-                            if not(query[0], i) in self.boolRes:
+                            if not(query[0], str(i)) in self.boolRes:
                                 self.boolRes.append((query[0], str(i)))
                         elif positions_2[j] > positions_1[k]:
                             break
