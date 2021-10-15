@@ -143,7 +143,7 @@ class SearchEngine(object):
                     while j != len2:
                         if abs(positions_1[k] - positions_2[j] <= proximity):
                             if not(query[0], i) in self.boolRes:
-                                self.boolRes.append((query[0], i))
+                                self.boolRes.append((query[0], str(i)))
                         elif positions_2[j] > positions_1[k]:
                             break
                         j += 1
