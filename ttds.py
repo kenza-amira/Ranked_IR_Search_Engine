@@ -98,7 +98,10 @@ class SearchEngine(object):
         out.close()
 
     def booleanSearch(self, query):
-        print("bool search it is")
+        n_query = query[2:].strip()
+        if "NOT" in query:
+            terms = re.split("(?:OR)?(?:AND)? NOT", n_query)
+
 
     def phraseSearch(self, query):
         terms = query.replace("\"", "").split()
