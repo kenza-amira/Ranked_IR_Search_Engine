@@ -97,13 +97,8 @@ class SearchEngine(object):
                           .replace(']', '') + "\n")
         out.close()
 
-    def booleanSearch(self, query):
-        n_query = query[2:].strip()
-        if "NOT" in query:
-            terms = re.split("(?:OR)?(?:AND)? NOT", n_query)
-
-
     def phraseSearch(self, query):
+        doc_keeper = []
         terms = query.replace("\"", "").split()
         term1 = terms[0]
         term2 = terms[1]
@@ -136,10 +131,12 @@ class SearchEngine(object):
                         if abs(positions_1[k] - positions_2[j] == 1):
                             if not(query[0], str(i)) in self.boolRes:
                                 self.boolRes.append((query[0], str(i)))
+                                doc_keeper.append(str(i))
                         elif positions_2[j] > positions_1[k]:
                             break
                         j += 1
                     k += 1
+        return doc_keeper
 
     def proximitySearch(self, query):
         # FINDING INTEGER PROXIMITY
@@ -186,6 +183,34 @@ class SearchEngine(object):
                             break
                         j += 1
                     k += 1
+
+    def booleanSearch(self, query):
+        no_of_files_list = list(range(0, len(os.listdir('input_files'))))
+        n_query = query[2:].strip()
+        res = "none"
+        op = ' '.join(re.findall("(?:OR)?(?:AND)?(?:NOT)?", n_query)).strip()
+        print(op)
+        if "NOT" in query:
+            terms = re.split("(?:OR)?(?:AND)? NOT", n_query)
+            for i in range(2):
+                if "\"" in terms[i]:
+                    res = self.phraseSearch(terms[i])
+                    print(res)
+            if res == "none":
+                out1 = self.pos_index[terms[0].strip()][1]
+                out2 = [x for x in no_of_files_list
+                        if x not in self.pos_index[terms[1].strip()][1]]
+                out1_d = [d for d in out1]
+                out2_d = [d for d in out2]
+
+                if "OR" in op:
+                    out = out1_d + list(set(out2_d)-set(out1_d))
+                    for o in out:
+                        self.boolRes.append((query[0], str(o)))
+                else:
+                    out = out1_d and out2_d
+                    for o in out:
+                        self.boolRes.append((query[0], str(o)))
 
     def tfidfSearch(self, query):
         pass
