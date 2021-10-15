@@ -211,6 +211,24 @@ class SearchEngine(object):
                     out = out1_d and out2_d
                     for o in out:
                         self.boolRes.append((query[0], str(o)))
+        else:
+            terms = re.split("(?:OR)?(?:AND)?", n_query)
+            for i in range(2):
+                if "\"" in terms[i]:
+                    res = self.phraseSearch(terms[i])
+                    print(res)
+            if res == "none":
+                out1 = [d for d in self.pos_index[terms[0].strip()][1]]
+                out2 = [d for d in self.pos_index[terms[1].strip()][1]]
+
+                if "OR" in op:
+                    out = out1 + list(set(out2)-set(out1))
+                    for o in out:
+                        self.boolRes.append((query[0], str(o)))
+                else:
+                    out = out1 and out2
+                    for o in out:
+                        self.boolRes.append((query[0], str(o)))
 
     def tfidfSearch(self, query):
         pass
