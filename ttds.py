@@ -96,7 +96,7 @@ class SearchEngine(object):
                           .replace(']', '') + "\n")
         out.close()
 
-    def phraseSearch(self, query):
+    def phraseSearch(self, query, out=0):
         doc_keeper = []
         terms = query.replace("\"", "").split()
         term1 = terms[0]
@@ -128,8 +128,10 @@ class SearchEngine(object):
                 while k != len1:
                     while j != len2:
                         if abs(positions_1[k] - positions_2[j] == 1):
-                            if not(query[0], str(i)) in self.boolRes:
-                                self.boolRes.append((query[0], str(i)))
+                            if (not(query[0], str(i)) in self.boolRes
+                                    and int(i)not in doc_keeper):
+                                if out == 0:
+                                    self.boolRes.append((query[0], str(i)))
                                 doc_keeper.append(int(i))
                         elif positions_2[j] > positions_1[k]:
                             break
@@ -208,14 +210,14 @@ class SearchEngine(object):
                     if "NOT" in term:
                         not_term = re.search('NOT(.*)', term).group(1).strip()
                         if "\"" in not_term:
-                            not_term = self.phraseSearch(not_term)
+                            not_term = self.phraseSearch(not_term, out=1)
                             terms[term] = self.notOperation(not_term, flag=1)
                         else:
                             not_term = self.ps.stem(not_term.lower())
                             terms[term] = self.notOperation(not_term)
                     else:
                         if "\"" in term:
-                            terms[term] = self.phraseSearch(term)
+                            terms[term] = self.phraseSearch(term, out=1)
                         else:
                             tmp_term = self.ps.stem(term.lower())
                             terms[term] = [d for d in
@@ -240,7 +242,7 @@ class SearchEngine(object):
                     if "NOT" in term:
                         not_term = re.search('NOT(.*)', term).group(1).strip()
                         if "\"" in not_term:
-                            not_term = self.phraseSearch(not_term)
+                            not_term = self.phraseSearch(not_term, out=1)
                             terms[term] = self.notOperation(not_term, flag=1)
                         else:
                             not_term = self.ps.stem(not_term.lower())
@@ -248,7 +250,7 @@ class SearchEngine(object):
                     else:
                         tmp_term = self.ps.stem(term.lower())
                         if "\"" in term:
-                            terms[term] = self.phraseSearch(term)
+                            terms[term] = self.phraseSearch(term, out=1)
                         else:
                             terms[term] = [d for d
                                            in self.pos_index[tmp_term][1]]
@@ -257,9 +259,6 @@ class SearchEngine(object):
                 if or_list != []:
                     for item in or_list:
                         self.boolRes.append((query[0], str(item)))
-
-    def tfidfSearch(self, query):
-        pass
 
     def booleanQueryFile(self, file="queries.boolean.txt"):
         f = open(file)
@@ -277,6 +276,15 @@ class SearchEngine(object):
                 for d in docs:
                     self.boolRes.append((line[0], str(d)))
 
+    def writeBooleanToFile(self):
+        out = open("results.boolean.txt", "w")
+        for a, b in self.boolRes:
+            out.write(a + "," + b + "\n")
+        out.close()
+
+    def tfidfSearch(self, query):
+        pass
+
     def rankedQueryFile(self, file="queries.ranked.txt"):
         pass
 
@@ -290,16 +298,8 @@ if __name__ == '__main__':
     print("Generating inverted index")
     se.inverted_index()
     print("Success! Inverted Positional Index Generated!")
-
     se.writeIndexToFile()
-
-    # print("For term grass: ")
-    # print(se.pos_index["grass"])
-
-    # file_list = se.pos_index["grass"][1]
-    # print("Filename, [Positions]")
-    # for fileno, positions in file_list.items():
-    #     print(se.file_map[fileno], positions)
-
+    print("Running Boolean queries")
     se.booleanQueryFile()
-    print(se.boolRes)
+    se.writeBooleanToFile()
+    print("Success! Results at: results.boolean.txt")
