@@ -202,7 +202,7 @@ class SearchEngine(object):
             checker = term1.replace("NOT ", "").replace("\"", "").strip()
             checker += " "
             checker += term2.replace("NOT ", "").replace("\"", "").strip()
-            checker = self.ps.stem(checker.strip().lower()).split(' ')            
+            checker = self.ps.stem(checker.strip().lower()).split(' ')
             if (all(c in self.pos_index for c in checker)):
                 for term in terms:
                     if "NOT" in term:
@@ -218,7 +218,8 @@ class SearchEngine(object):
                             terms[term] = self.phraseSearch(term)
                         else:
                             tmp_term = self.ps.stem(term.lower())
-                            terms[term] = [d for d in self.pos_index[tmp_term][1]]
+                            terms[term] = [d for d in
+                                           self.pos_index[tmp_term][1]]
                 and_list = terms[term1] and terms[term2]
                 if and_list != []:
                     for item in and_list:
@@ -234,7 +235,6 @@ class SearchEngine(object):
             checker += " "
             checker += term2.replace("NOT ", "").replace("\"", "")
             checker = self.ps.stem(checker.strip().lower()).split(' ')
-            print(checker)
             if (all(c in self.pos_index for c in checker)):
                 for term in terms:
                     if "NOT" in term:
@@ -250,7 +250,8 @@ class SearchEngine(object):
                         if "\"" in term:
                             terms[term] = self.phraseSearch(term)
                         else:
-                            terms[term] = [d for d in self.pos_index[tmp_term][1]]
+                            terms[term] = [d for d
+                                           in self.pos_index[tmp_term][1]]
                 or_list = terms[term1] + list(set(terms[term2])
                                               - set(terms[term1]))
                 if or_list != []:
