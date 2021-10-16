@@ -13,7 +13,6 @@ class SearchEngine(object):
         self.pp = pprint.PrettyPrinter(indent=2)
         # Initialize the dictionary.
         self.pos_index = {}
-
         # Initialize the file mapping (fileno -> file name).
         self.file_map = {}
 
@@ -184,53 +183,75 @@ class SearchEngine(object):
                         j += 1
                     k += 1
 
-    def booleanSearch(self, query):
+    def notOperation(self, term, flag=0):
         no_of_files_list = list(range(0, len(os.listdir('input_files'))))
-        n_query = query[2:].strip()
-        res = "none"
-        op = ' '.join(re.findall("(?:OR)?(?:AND)?(?:NOT)?", n_query)).strip()
-        print(query)
-        if "NOT" in query:
-            terms = re.split("(?:OR)?(?:AND)? NOT", n_query)
-            for i in range(2):
-                if "\"" in terms[i]:
-                    res = self.phraseSearch(terms[i])
-                    tmp = (res, i)
-                    print(tmp)
-            if res == "none":
-                out1 = self.pos_index[terms[0].strip()][1]
-                out2 = [x for x in no_of_files_list
-                        if x not in self.pos_index[terms[1].strip()][1]]
-                out1_d = [d for d in out1]
-                out2_d = [d for d in out2]
-
-                if "OR" in op:
-                    out = out1_d + list(set(out2_d)-set(out1_d))
-                    for o in out:
-                        self.boolRes.append((query[0], str(o)))
-                else:
-                    out = out1_d and out2_d
-                    for o in out:
-                        self.boolRes.append((query[0], str(o)))
+        if flag == 0:
+            return [x for x in no_of_files_list
+                    if x not in self.pos_index[term][1]]
         else:
-            terms = n_query.replace("OR", "").replace("AND", "").strip().split(' ',1)
-            print(terms)
-            for i in range(2):
-                if "\"" in terms[i]:
-                    res = self.phraseSearch(terms[i])
-                    print(res)
-            if res == "none":
-                out1 = [d for d in self.pos_index[terms[0].strip()][1]]
-                out2 = [d for d in self.pos_index[terms[1].strip()][1]]
+            return [x for x in no_of_files_list if x not in term]
 
-                if "OR" in op:
-                    out = out1 + list(set(out2)-set(out1))
-                    for o in out:
-                        self.boolRes.append((query[0], str(o)))
-                else:
-                    out = out1 and out2
-                    for o in out:
-                        self.boolRes.append((query[0], str(o)))
+    def booleanSearch(self, query):
+        if "AND" in query:
+            terms = dict()
+            new_query = query[2:].strip()
+            term1 = re.search('AND (.*)', new_query).group(1).strip()
+            term2 = re.search('(.*) AND', new_query).group(1).strip()
+            terms[term1] = []
+            terms[term2] = []
+            checker = term1.replace("NOT ", "").replace("\"", "").strip()
+            checker += " "
+            checker += term2.replace("NOT ", "").replace("\"", "").strip()
+            checker = checker.strip().split(' ')
+            print(checker)
+            if (all(c in self.pos_index for c in checker)):
+                for term in terms:
+                    if "NOT" in term:
+                        not_term = re.search('NOT(.*)', term).group(1).strip()
+                        if "\"" in not_term:
+                            not_term = self.phraseSearch(not_term)
+                            terms[term] = self.notOperation(not_term, flag=1)
+                        else:
+                            terms[term] = self.notOperation(not_term)
+                    else:
+                        if "\"" in term:
+                            terms[term] = self.phraseSearch(term)
+                        else:
+                            terms[term] = [d for d in self.pos_index[term][1]]
+                and_list = terms[term1] and terms[term2]
+                if and_list != []:
+                    for item in and_list:
+                        self.boolRes.append((query[0], str(item)))
+        elif "OR" in query:
+            terms = dict()
+            new_query = query[2:].strip()
+            term1 = re.search('OR (.*)', new_query).group(1).strip()
+            term2 = re.search('(.*) OR', new_query).group(1).strip()
+            terms[term1] = []
+            terms[term2] = []
+            checker = term1.replace("NOT ", "").replace("\"", "")
+            checker += " "
+            checker += term2.replace("NOT ", "").replace("\"", "")
+            checker = checker.strip().split(' ')
+            if (all(c in self.pos_index for c in checker)):
+                for term in terms:
+                    if "NOT" in term:
+                        not_term = re.search('NOT(.*)', term).group(1).strip()
+                        if "\"" in not_term:
+                            not_term = self.phraseSearch(not_term)
+                            terms[term] = self.notOperation(not_term, flag=1)
+                        else:
+                            terms[term] = self.notOperation(not_term)
+                    else:
+                        if "\"" in term:
+                            terms[term] = self.phraseSearch(term)
+                        else:
+                            terms[term] = [d for d in self.pos_index[term][1]]
+                or_list = terms[term1] + list(set(terms[term2])
+                                              - set(terms[term1]))
+                if or_list != []:
+                    for item in or_list:
+                        self.boolRes.append((query[0], str(item)))
 
     def tfidfSearch(self, query):
         pass
