@@ -3,6 +3,8 @@ import os
 from natsort import natsorted
 from nltk.stem import PorterStemmer
 import pprint
+import math
+import numpy as np
 
 
 class SearchEngine(object):
@@ -18,6 +20,9 @@ class SearchEngine(object):
 
         # Boolean results initialization
         self.boolRes = []
+
+        # Ranked results initialization
+        self.rankedRes = []
 
         # Getting List of Stop word's ready: Getting rid of punctuation
         # i.e you'll becomes youll
@@ -60,13 +65,12 @@ class SearchEngine(object):
             f.close()
             for pos, term in enumerate(file_array):
                 if term in self.pos_index and term != '':
-                    # Increment total freq by 1.
-                    self.pos_index[term][0] = self.pos_index[term][0] + 1
                     # Check if the term has existed in that DocID before.
                     if fileno in self.pos_index[term][1]:
                         self.pos_index[term][1][fileno].append(pos)
                     else:
                         self.pos_index[term][1][fileno] = [pos]
+                        self.pos_index[term][0] = self.pos_index[term][0] + 1
                     # If term does not exist in the positional index dictionary
                     # (first encounter).
                 elif term != '':
@@ -282,11 +286,51 @@ class SearchEngine(object):
             out.write(a + "," + b + "\n")
         out.close()
 
+    def normalize(self, scores):
+        return (scores - np.min(scores)) / (np.max(scores) - np.min(scores))
+
     def tfidfSearch(self, query):
-        pass
+        terms = [self.ps.stem(t) for t in query[2:].strip().lower().split(' ')]
+        N = len(os.listdir('input_files'))
+        scores = dict()
+        for t in terms:
+            df = self.pos_index[t][0]
+            idf = math.log10(N/df)
+            for doc in list(range(0, N)):
+                try:
+                    tf = len(self.pos_index[t][1][doc])
+                    tmp = 1 + math.log10(tf)
+                    try:
+                        scores[doc] += tmp*idf
+                    except KeyError:
+                        scores[doc] = tmp*idf
+                except KeyError:
+                    tf = 0.00000001
+                    tmp = 1 + math.log10(tf)
+                    try:
+                        scores[doc] += tmp*idf
+                    except KeyError:
+                        scores[doc] = tmp*idf
+        score_vals = self.normalize(list(scores.values()))
+        i = 0
+        for doc in scores:
+            scores[doc] = score_vals[i]
+            i += 1
+        scores = dict(sorted(scores.items(), key=lambda item: item[1],
+                             reverse=True))
+        self.rankedRes.append((query[0], list(scores.items())[:150]))
 
     def rankedQueryFile(self, file="queries.ranked.txt"):
-        pass
+        f = open(file)
+        lines = f.readlines()
+        out = open("results.ranked.txt", "w")
+        for line in lines:
+            self.tfidfSearch(line)
+
+        for q, res in self.rankedRes:
+            for r in res:
+                out.write(q + "," + str(r[0]) + "," + str(r[1]) + "\n")
+        out.close()
 
 
 if __name__ == '__main__':
@@ -303,3 +347,6 @@ if __name__ == '__main__':
     se.booleanQueryFile()
     se.writeBooleanToFile()
     print("Success! Results at: results.boolean.txt")
+    print("Running Ranked Retrival queries")
+    se.rankedQueryFile()
+    print("Success! Results at: results.ranked.txt")
