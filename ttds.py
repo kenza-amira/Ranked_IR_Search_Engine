@@ -335,10 +335,10 @@ class SearchEngine(object):
 
 if __name__ == '__main__':
     se = SearchEngine()
-    # print("preprocessing bible text")
-    # se.preprocessing("bible.txt")
-    # print("preprocessing abstracts wiki text")
-    # se.preprocessing("abstracts.wiki.txt")
+    # for filename in os.listdir("input_files/"):
+    #     print("Pre processing " + str(filename) + " ...")
+    #     se.preprocessing(filename)
+    # print("Pre pocessing completed!")
     print("Generating inverted index")
     se.inverted_index()
     print("Success! Inverted Positional Index Generated!")
