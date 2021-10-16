@@ -130,7 +130,7 @@ class SearchEngine(object):
                         if abs(positions_1[k] - positions_2[j] == 1):
                             if not(query[0], str(i)) in self.boolRes:
                                 self.boolRes.append((query[0], str(i)))
-                                doc_keeper.append(str(i))
+                                doc_keeper.append(int(i))
                         elif positions_2[j] > positions_1[k]:
                             break
                         j += 1
@@ -202,8 +202,7 @@ class SearchEngine(object):
             checker = term1.replace("NOT ", "").replace("\"", "").strip()
             checker += " "
             checker += term2.replace("NOT ", "").replace("\"", "").strip()
-            checker = checker.strip().split(' ')
-            print(checker)
+            checker = self.ps.stem(checker.strip().lower()).split(' ')            
             if (all(c in self.pos_index for c in checker)):
                 for term in terms:
                     if "NOT" in term:
@@ -212,12 +211,14 @@ class SearchEngine(object):
                             not_term = self.phraseSearch(not_term)
                             terms[term] = self.notOperation(not_term, flag=1)
                         else:
+                            not_term = self.ps.stem(not_term.lower())
                             terms[term] = self.notOperation(not_term)
                     else:
                         if "\"" in term:
                             terms[term] = self.phraseSearch(term)
                         else:
-                            terms[term] = [d for d in self.pos_index[term][1]]
+                            tmp_term = self.ps.stem(term.lower())
+                            terms[term] = [d for d in self.pos_index[tmp_term][1]]
                 and_list = terms[term1] and terms[term2]
                 if and_list != []:
                     for item in and_list:
@@ -232,7 +233,8 @@ class SearchEngine(object):
             checker = term1.replace("NOT ", "").replace("\"", "")
             checker += " "
             checker += term2.replace("NOT ", "").replace("\"", "")
-            checker = checker.strip().split(' ')
+            checker = self.ps.stem(checker.strip().lower()).split(' ')
+            print(checker)
             if (all(c in self.pos_index for c in checker)):
                 for term in terms:
                     if "NOT" in term:
@@ -241,12 +243,14 @@ class SearchEngine(object):
                             not_term = self.phraseSearch(not_term)
                             terms[term] = self.notOperation(not_term, flag=1)
                         else:
+                            not_term = self.ps.stem(not_term.lower())
                             terms[term] = self.notOperation(not_term)
                     else:
+                        tmp_term = self.ps.stem(term.lower())
                         if "\"" in term:
                             terms[term] = self.phraseSearch(term)
                         else:
-                            terms[term] = [d for d in self.pos_index[term][1]]
+                            terms[term] = [d for d in self.pos_index[tmp_term][1]]
                 or_list = terms[term1] + list(set(terms[term2])
                                               - set(terms[term1]))
                 if or_list != []:
