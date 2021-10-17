@@ -288,9 +288,12 @@ class SearchEngine(object):
                 self.phraseSearch(line)
             # CASE WHERE THE QUERY ONLY CONTAINS A SINGLE WORD
             elif len(line[2:].split(' ')) == 1:
-                docs = self.pos_index[line[2:].strip()][1]
-                for d in docs:
-                    self.boolRes.append((line[0], str(d)))
+                try:
+                    docs = self.pos_index[line[2:].strip()][1]
+                    for d in docs:
+                        self.boolRes.append((line[0], str(d)))
+                except KeyError:
+                    pass
 
     def writeBooleanToFile(self):
         out = open("results.boolean.txt", "w")
@@ -302,12 +305,17 @@ class SearchEngine(object):
         return (scores - np.min(scores)) / (np.max(scores) - np.min(scores))
 
     def tfidfSearch(self, query):
-        terms = [self.ps.stem(t) for t in query[2:].strip().lower().split(' ')]
+        terms = [self.ps.stem(t) for t in
+                 re.sub('[^A-Za-z0-9 ]+', '', query[2:]
+                        .strip().lower()).split(' ')]
         N = len(os.listdir('input_files'))
         scores = dict()
         for t in terms:
-            df = self.pos_index[t][0]
-            idf = math.log10(N/df)
+            try:
+                df = self.pos_index[t][0]
+                idf = math.log10(N/df)
+            except KeyError:
+                df = 0
             for doc in list(range(0, N)):
                 try:
                     tf = len(self.pos_index[t][1][doc])
