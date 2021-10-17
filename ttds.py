@@ -5,6 +5,7 @@ from nltk.stem import PorterStemmer
 import pprint
 import math
 import numpy as np
+import xml.etree.ElementTree as ET
 
 
 class SearchEngine(object):
@@ -32,6 +33,18 @@ class SearchEngine(object):
             word = word.strip()
             word = re.findall('\\w+', word)
             self.st_words.append(''.join(word))
+
+    def splittingDocs(self):
+        tree = ET.parse(r'C:\Users\kenza\OneDrive\Documents\TTDS\collections\
+            trec.sample.xml')
+        root = tree.getroot()
+        for doc in root.findall("DOC"):
+            doc_no = doc.find("DOCNO").text
+            headline = doc.find("HEADLINE").text
+            text = doc.find("TEXT").text
+            f = open("input_files/" + str(doc_no)+".txt", "w")
+            f.write(headline + " " + text)
+            f.close()
 
     def preprocessing(self, documentName):
         # Opening the file
@@ -117,7 +130,7 @@ class SearchEngine(object):
             # GETTING THE DOC IDS THAT CONTAIN BOTH TERM
             out1 = [doc_id for doc_id in self.pos_index[term1][1]]
             out2 = [doc_id for doc_id in self.pos_index[term2][1]]
-            intersec = out1 and out2
+            intersec = list(set(out1) & set(out2))
             # IF THE INTERSECTION IS NULL WE STOP THE SEARCH
             if intersec == []:
                 return "No results"
@@ -147,7 +160,6 @@ class SearchEngine(object):
         # FINDING INTEGER PROXIMITY
         proximity = re.search('#(.*)\\(', query)
         proximity = int(proximity.group(1))
-
         # ISOLATING FIRST TERM
         term1 = re.search('\\((.*)\\,', query)
         term1 = term1.group(1)
@@ -167,7 +179,7 @@ class SearchEngine(object):
             # GETTING THE DOC IDS THAT CONTAIN BOTH TERM
             out1 = [doc_id for doc_id in self.pos_index[term1][1]]
             out2 = [doc_id for doc_id in self.pos_index[term2][1]]
-            intersec = out1 and out2
+            intersec = list(set(out1) & set(out2))
             # IF THE INTERSECTION IS NULL WE STOP THE SEARCH
             if intersec == []:
                 return "No results"
@@ -226,7 +238,7 @@ class SearchEngine(object):
                             tmp_term = self.ps.stem(term.lower())
                             terms[term] = [d for d in
                                            self.pos_index[tmp_term][1]]
-                and_list = terms[term1] and terms[term2]
+                and_list = list(set(terms[term1]) & set(terms[term2]))
                 if and_list != []:
                     for item in and_list:
                         self.boolRes.append((query[0], str(item)))
@@ -335,6 +347,8 @@ class SearchEngine(object):
 
 if __name__ == '__main__':
     se = SearchEngine()
+    # print("SPLITTING XML FILE INTO CORPUS")
+    # se.splittingDocs()
     # for filename in os.listdir("input_files/"):
     #     print("Pre processing " + str(filename) + " ...")
     #     se.preprocessing(filename)
