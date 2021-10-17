@@ -15,7 +15,7 @@ class SearchEngine(object):
         self.ps = PorterStemmer()
         self.pp = pprint.PrettyPrinter(indent=2)
         # Initialize the dictionary.
-        self.pos_index = {}
+        self.inv_index = {}
         # Initialize the file mapping (fileno -> file name).
         self.file_map = {}
 
@@ -77,24 +77,24 @@ class SearchEngine(object):
                 file_array = f.read().split(' ')
             f.close()
             for pos, term in enumerate(file_array):
-                if term in self.pos_index and term != '':
+                if term in self.inv_index and term != '':
                     # Check if the term has existed in that DocID before.
-                    if fileno in self.pos_index[term][1]:
-                        self.pos_index[term][1][fileno].append(pos)
+                    if fileno in self.inv_index[term][1]:
+                        self.inv_index[term][1][fileno].append(pos)
                     else:
-                        self.pos_index[term][1][fileno] = [pos]
-                        self.pos_index[term][0] = self.pos_index[term][0] + 1
+                        self.inv_index[term][1][fileno] = [pos]
+                        self.inv_index[term][0] = self.inv_index[term][0] + 1
                     # If term does not exist in the positional index dictionary
                     # (first encounter).
                 elif term != '':
                     # Initialize the list.
-                    self.pos_index[term] = []
+                    self.inv_index[term] = []
                     # The total frequency is 1.
-                    self.pos_index[term].append(1)
+                    self.inv_index[term].append(1)
                     # The postings list is initially empty.
-                    self.pos_index[term].append({})
+                    self.inv_index[term].append({})
                     # Add doc ID to postings list.
-                    self.pos_index[term][1][fileno] = [pos]
+                    self.inv_index[term][1][fileno] = [pos]
 
             # Map the file no. to the file name.
             self.file_map[fileno] = "input/" + file
@@ -104,11 +104,11 @@ class SearchEngine(object):
 
     def writeIndexToFile(self):
         out = open("index.txt", "w")
-        for term in (self.pos_index):
-            out.write(term + ":" + str(self.pos_index[term][0]) + "\n")
-            for file_no in self.pos_index[term][1]:
+        for term in (self.inv_index):
+            out.write(term + ":" + str(self.inv_index[term][0]) + "\n")
+            for file_no in self.inv_index[term][1]:
                 out.write("\t" + str(file_no) + ":" +
-                          str(self.pos_index[term][1][file_no])
+                          str(self.inv_index[term][1][file_no])
                           .replace('[', '')
                           .replace(']', '') + "\n")
         out.close()
@@ -126,18 +126,18 @@ class SearchEngine(object):
         term2 = self.ps.stem(term2.lower())
 
         # SEARCH IN POSITIONAL INDEX ONLY IF BOTH TERMS EXIST
-        if (term1 in self.pos_index and term2 in self.pos_index):
+        if (term1 in self.inv_index and term2 in self.inv_index):
             # GETTING THE DOC IDS THAT CONTAIN BOTH TERM
-            out1 = [doc_id for doc_id in self.pos_index[term1][1]]
-            out2 = [doc_id for doc_id in self.pos_index[term2][1]]
+            out1 = [doc_id for doc_id in self.inv_index[term1][1]]
+            out2 = [doc_id for doc_id in self.inv_index[term2][1]]
             intersec = list(set(out1) & set(out2))
             # IF THE INTERSECTION IS NULL WE STOP THE SEARCH
             if intersec == []:
                 return "No results"
             for i in intersec:
                 # GETTING THE TERMS POSITIONS FOR EACH DOC
-                positions_1 = self.pos_index[term1][1][i]
-                positions_2 = self.pos_index[term2][1][i]
+                positions_1 = self.inv_index[term1][1][i]
+                positions_2 = self.inv_index[term2][1][i]
 
                 len1 = len(positions_1)
                 len2 = len(positions_2)
@@ -145,10 +145,11 @@ class SearchEngine(object):
                 while k != len1:
                     while j != len2:
                         if abs(positions_1[k] - positions_2[j] == 1):
-                            if (not(query[0], str(i)) in self.boolRes
+                            query_no = query.split(' ')[0]
+                            if (not(query_no, str(i)) in self.boolRes
                                     and int(i)not in doc_keeper):
                                 if out == 0:
-                                    self.boolRes.append((query[0], str(i)))
+                                    self.boolRes.append((query_no, str(i)))
                                 doc_keeper.append(int(i))
                         elif positions_2[j] > positions_1[k]:
                             break
@@ -175,18 +176,18 @@ class SearchEngine(object):
         term2 = self.ps.stem(term2.lower())
 
         # SEARCH IN POSITIONAL INDEX ONLY IF BOTH TERMS EXIST
-        if (term1 in self.pos_index and term2 in self.pos_index):
+        if (term1 in self.inv_index and term2 in self.inv_index):
             # GETTING THE DOC IDS THAT CONTAIN BOTH TERM
-            out1 = [doc_id for doc_id in self.pos_index[term1][1]]
-            out2 = [doc_id for doc_id in self.pos_index[term2][1]]
+            out1 = [doc_id for doc_id in self.inv_index[term1][1]]
+            out2 = [doc_id for doc_id in self.inv_index[term2][1]]
             intersec = list(set(out1) & set(out2))
             # IF THE INTERSECTION IS NULL WE STOP THE SEARCH
             if intersec == []:
                 return "No results"
             for i in intersec:
                 # GETTING THE TERMS POSITIONS FOR EACH DOC
-                positions_1 = self.pos_index[term1][1][i]
-                positions_2 = self.pos_index[term2][1][i]
+                positions_1 = self.inv_index[term1][1][i]
+                positions_2 = self.inv_index[term2][1][i]
 
                 len1 = len(positions_1)
                 len2 = len(positions_2)
@@ -194,8 +195,9 @@ class SearchEngine(object):
                 while k != len1:
                     while j != len2:
                         if abs(positions_1[k] - positions_2[j] <= proximity):
-                            if not(query[0], str(i)) in self.boolRes:
-                                self.boolRes.append((query[0], str(i)))
+                            query_no = query.split(' ')[0]
+                            if not(query_no, str(i)) in self.boolRes:
+                                self.boolRes.append((query_no, str(i)))
                         elif positions_2[j] > positions_1[k]:
                             break
                         j += 1
@@ -205,7 +207,7 @@ class SearchEngine(object):
         no_of_files_list = list(range(0, len(os.listdir('input_files'))))
         if flag == 0:
             return [x for x in no_of_files_list
-                    if x not in self.pos_index[term][1]]
+                    if x not in self.inv_index[term][1]]
         else:
             return [x for x in no_of_files_list if x not in term]
 
@@ -221,7 +223,7 @@ class SearchEngine(object):
             checker += " "
             checker += term2.replace("NOT ", "").replace("\"", "").strip()
             checker = self.ps.stem(checker.strip().lower()).split(' ')
-            if (all(c in self.pos_index for c in checker)):
+            if (all(c in self.inv_index for c in checker)):
                 for term in terms:
                     if "NOT" in term:
                         not_term = re.search('NOT(.*)', term).group(1).strip()
@@ -237,11 +239,12 @@ class SearchEngine(object):
                         else:
                             tmp_term = self.ps.stem(term.lower())
                             terms[term] = [d for d in
-                                           self.pos_index[tmp_term][1]]
+                                           self.inv_index[tmp_term][1]]
                 and_list = list(set(terms[term1]) & set(terms[term2]))
                 if and_list != []:
                     for item in and_list:
-                        self.boolRes.append((query[0], str(item)))
+                        query_no = query.split(' ')[0]
+                        self.boolRes.append((query_no, str(item)))
         elif "OR" in query:
             terms = dict()
             new_query = query[2:].strip()
@@ -253,7 +256,7 @@ class SearchEngine(object):
             checker += " "
             checker += term2.replace("NOT ", "").replace("\"", "")
             checker = self.ps.stem(checker.strip().lower()).split(' ')
-            if (all(c in self.pos_index for c in checker)):
+            if (all(c in self.inv_index for c in checker)):
                 for term in terms:
                     if "NOT" in term:
                         not_term = re.search('NOT(.*)', term).group(1).strip()
@@ -269,12 +272,13 @@ class SearchEngine(object):
                             terms[term] = self.phraseSearch(term, out=1)
                         else:
                             terms[term] = [d for d
-                                           in self.pos_index[tmp_term][1]]
+                                           in self.inv_index[tmp_term][1]]
                 or_list = terms[term1] + list(set(terms[term2])
                                               - set(terms[term1]))
                 if or_list != []:
                     for item in or_list:
-                        self.boolRes.append((query[0], str(item)))
+                        query_no = query.split(' ')[0]
+                        self.boolRes.append((query_no, str(item)))
 
     def booleanQueryFile(self, file="queries.boolean.txt"):
         f = open(file)
@@ -289,7 +293,7 @@ class SearchEngine(object):
             # CASE WHERE THE QUERY ONLY CONTAINS A SINGLE WORD
             elif len(line[2:].split(' ')) == 1:
                 try:
-                    docs = self.pos_index[line[2:].strip()][1]
+                    docs = self.inv_index[line[2:].strip()][1]
                     for d in docs:
                         self.boolRes.append((line[0], str(d)))
                 except KeyError:
@@ -312,13 +316,13 @@ class SearchEngine(object):
         scores = dict()
         for t in terms:
             try:
-                df = self.pos_index[t][0]
+                df = self.inv_index[t][0]
                 idf = math.log10(N/df)
             except KeyError:
                 df = 0
             for doc in list(range(0, N)):
                 try:
-                    tf = len(self.pos_index[t][1][doc])
+                    tf = len(self.inv_index[t][1][doc])
                     tmp = 1 + math.log10(tf)
                     try:
                         scores[doc] += tmp*idf
@@ -338,7 +342,8 @@ class SearchEngine(object):
             i += 1
         scores = dict(sorted(scores.items(), key=lambda item: item[1],
                              reverse=True))
-        self.rankedRes.append((query[0], list(scores.items())[:150]))
+        query_no = query.split(' ')[0]
+        self.rankedRes.append((query_no, list(scores.items())[:150]))
 
     def rankedQueryFile(self, file="queries.ranked.txt"):
         f = open(file)
