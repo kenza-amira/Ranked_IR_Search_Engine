@@ -360,7 +360,7 @@ class SearchEngine(object):
 
 if __name__ == '__main__':
     se = SearchEngine()
-    # print("SPLITTING XML FILE INTO CORPUS")
+    # print("Splitting XML file into input files...")
     # se.splittingDocs()
     # for filename in os.listdir("input_files/"):
     #     print("Pre processing " + str(filename) + " ...")
