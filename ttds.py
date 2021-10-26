@@ -69,13 +69,14 @@ class SearchEngine(object):
         out.close()
 
     def inverted_index(self):
-        fileno = 0
+        
         file_names = natsorted(os.listdir("output_files"))
         for file in file_names:
             with open("output_files/" + file, 'r', encoding="ascii",
                       errors="surrogateescape") as f:
                 file_array = f.read().split(' ')
             f.close()
+            fileno = int(file.replace("_out.txt", ""))
             for pos, term in enumerate(file_array):
                 if term in self.inv_index and term != '':
                     # Check if the term has existed in that DocID before.
@@ -98,9 +99,6 @@ class SearchEngine(object):
 
             # Map the file no. to the file name.
             self.file_map[fileno] = "input/" + file
-
-            # Increment the file no. counter for document ID mapping
-            fileno += 1
 
     def writeIndexToFile(self):
         out = open("index.txt", "w")
@@ -307,34 +305,43 @@ class SearchEngine(object):
 
     def normalize(self, scores):
         return (scores - np.min(scores)) / (np.max(scores) - np.min(scores))
+    
+    def getTF(self, term, document):
+        try:
+            tf = len(self.inv_index[term][1][document])
+        except KeyError:
+            tf = 0
+        return tf
+
+    def getDF(self, term):
+        try:
+            df = self.inv_index[term][0]
+        except KeyError:
+            df = 0
+        return df
 
     def tfidfSearch(self, query):
         terms = [self.ps.stem(t) for t in
                  re.sub('[^A-Za-z0-9 ]+', '', query[2:]
                         .strip().lower()).split(' ')]
-        N = len(os.listdir('input_files'))
+        docs = [int(i.replace("_out.txt", "")) for i in os.listdir('output_files')]
+        N = len(docs)
         scores = dict()
         for t in terms:
-            try:
-                df = self.inv_index[t][0]
-                idf = math.log10(N/df)
-            except KeyError:
-                df = 0
-            for doc in list(range(0, N)):
-                try:
-                    tf = len(self.inv_index[t][1][doc])
-                    tmp = 1 + math.log10(tf)
+            df = self.getDF(t)
+            for doc in docs:
+                tf = self.getTF(t, doc)
+                if df > 0 and tf > 0:
+                    idf = math.log10(N/df)
                     try:
-                        scores[doc] += tmp*idf
+                        scores[doc] += (1+math.log10(tf))*idf
                     except KeyError:
-                        scores[doc] = tmp*idf
-                except KeyError:
-                    tf = 0.00000001
-                    tmp = 1 + math.log10(tf)
+                        scores[doc] = (1+math.log10(tf))*idf
+                else:
                     try:
-                        scores[doc] += tmp*idf
+                        scores[doc] += 0
                     except KeyError:
-                        scores[doc] = tmp*idf
+                        scores[doc] = 0
         score_vals = self.normalize(list(scores.values()))
         i = 0
         for doc in scores:
