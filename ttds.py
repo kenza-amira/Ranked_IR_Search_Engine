@@ -69,7 +69,6 @@ class SearchEngine(object):
         out.close()
 
     def inverted_index(self):
-        
         file_names = natsorted(os.listdir("output_files"))
         for file in file_names:
             with open("output_files/" + file, 'r', encoding="ascii",
@@ -304,8 +303,9 @@ class SearchEngine(object):
         out.close()
 
     def normalize(self, scores):
-        return (scores - np.min(scores)) / (np.max(scores) - np.min(scores))
-    
+        return np.around((scores - np.min(scores)) /
+                         (np.max(scores) - np.min(scores)), decimals=4)
+
     def getTF(self, term, document):
         try:
             tf = len(self.inv_index[term][1][document])
@@ -324,7 +324,8 @@ class SearchEngine(object):
         terms = [self.ps.stem(t) for t in
                  re.sub('[^A-Za-z0-9 ]+', '', query[2:]
                         .strip().lower()).split(' ')]
-        docs = [int(i.replace("_out.txt", "")) for i in os.listdir('output_files')]
+        docs = [int(i.replace("_out.txt", "")) for i
+                in os.listdir('output_files')]
         N = len(docs)
         scores = dict()
         for t in terms:
