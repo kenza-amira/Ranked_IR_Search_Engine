@@ -41,7 +41,8 @@ class SearchEngine(object):
         """
         os.mkdir('input_files')
         os.mkdir('output_files')
-        tree = ET.parse(r'C:\Users\kenza\OneDrive\Documents\TTDS\collections\trec.sample.xml')
+        tree = ET.parse(r'C:\Users\kenza\OneDrive\Documents\TTDS\
+            \collections\trec.5000.xml')
         root = tree.getroot()
         for doc in root.findall("DOC"):
             doc_no = doc.find("DOCNO").text
@@ -195,9 +196,12 @@ class SearchEngine(object):
                             break
                         j += 1
                     k += 1
+        if (out == 0):
+            print(str(len(doc_keeper)) + " results found.")
         return doc_keeper
 
     def proximitySearch(self, query):
+        count = 0
         # FINDING INTEGER PROXIMITY
         proximity = re.search('#(.*)\\(', query)
         proximity = int(proximity.group(1))
@@ -238,18 +242,21 @@ class SearchEngine(object):
                             query_no = query.split(' ')[0]
                             if not(query_no, str(i)) in self.boolRes:
                                 self.boolRes.append((query_no, str(i)))
+                                count += 1
                         elif positions_2[j] > positions_1[k]:
                             break
                         j += 1
                     k += 1
+        print(str(count) + " results found.")
 
     def notOperation(self, term, flag=0):
-        no_of_files_list = list(range(0, len(os.listdir('input_files'))))
+        docs = [int(i.replace("_out.txt", ""))
+                for i in os.listdir('output_files')]
         if flag == 0:
-            return [x for x in no_of_files_list
+            return [x for x in docs
                     if x not in self.inv_index[term][1]]
         else:
-            return [x for x in no_of_files_list if x not in term]
+            return [x for x in docs if x not in term]
 
     def booleanSearch(self, query):
         if "AND" in query:
@@ -257,8 +264,6 @@ class SearchEngine(object):
             new_query = query[2:].strip()
             term1 = re.search('AND (.*)', new_query).group(1).strip()
             term2 = re.search('(.*) AND', new_query).group(1).strip()
-            print(term1)
-            print(term2)
 
             terms[term1] = []
             terms[term2] = []
@@ -272,7 +277,6 @@ class SearchEngine(object):
                         not_term = self.ps.stem(not_term.lower())
                         terms[term] = self.notOperation(not_term)
                 else:
-                    print(term)
                     if "\"" in term:
                         terms[term] = self.phraseSearch(term, out=1)
                     else:
@@ -283,6 +287,7 @@ class SearchEngine(object):
                 for item in and_list:
                     query_no = query.split(' ')[0]
                     self.boolRes.append((query_no, str(item)))
+            print(str(len(and_list)) + " results found.")
         elif "OR" in query:
             terms = dict()
             new_query = query[2:].strip()
@@ -311,24 +316,31 @@ class SearchEngine(object):
                 for item in or_list:
                     query_no = query.split(' ')[0]
                     self.boolRes.append((query_no, str(item)))
+                    print(str(len(or_list)) + " results found.")
 
     def booleanQueryFile(self, file="queries.boolean.txt"):
         f = open(file)
         lines = f.readlines()
         for line in lines:
             if "AND" in line or "OR" in line or "NOT" in line:
-                print("Bool Search: " + str(line[0:1]))
+                print("Performing Bool Search for query no " + str(line[0:2]))
                 self.booleanSearch(line)
             elif "#" in line:
-                print("Proximity Search: " + str(line[0:1]))
+                print("Perofrming Proximity Search: for query no "
+                      + str(line[0:2]))
                 self.proximitySearch(line)
             elif "\"" in line:
-                print("Phrase Search: " + str(line[0:1]))
+                print("Performing Phrase Search for query no "
+                      + str(line[0:2]))
                 self.phraseSearch(line)
-            # CASE WHERE THE QUERY ONLY CONTAINS A SINGLE WORD
+            # CASE WHERE THE QUERY ONLY CONTAINS A SINGLE WORDa
             elif len(line[2:].split(' ')) == 1:
+                print("Performing Single Word Search for query no "
+                      + str(line[0:2]))
                 try:
-                    docs = self.inv_index[line[2:].strip()][1]
+                    term = self.ps.stem(line[2:].strip().lower())
+                    docs = self.inv_index[term][1]
+                    print(str(len(docs)) + " results found.")
                     for d in docs:
                         self.boolRes.append((line[0], str(d)))
                 except KeyError:
