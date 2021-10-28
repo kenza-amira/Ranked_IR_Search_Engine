@@ -1,7 +1,8 @@
 import re
 import os
 from natsort import natsorted
-from nltk.stem import PorterStemmer
+# from nltk.stem import PorterStemmer
+from nltk.stem.snowball import SnowballStemmer
 import pprint
 import math
 import numpy as np
@@ -12,12 +13,10 @@ class SearchEngine(object):
 
     def __init__(self):
         self.stop_words = open("englishST.txt", "r")
-        self.ps = PorterStemmer()
+        self.ps = SnowballStemmer(language='english')
         self.pp = pprint.PrettyPrinter(indent=2)
         # Initialize the dictionary.
         self.inv_index = {}
-        # Initialize the file mapping (fileno -> file name).
-        self.file_map = {}
 
         # Boolean results initialization
         self.boolRes = []
@@ -35,8 +34,14 @@ class SearchEngine(object):
             self.st_words.append(''.join(word))
 
     def splittingDocs(self):
-        tree = ET.parse(r'C:\Users\kenza\OneDrive\Documents\TTDS\collections\
-            trec.sample.xml')
+        """
+        This function splits the trec collection into multiple
+        input docs named according to the DOCNO in the XML file.
+        I used an XML parser from a python library.
+        """
+        os.mkdir('input_files')
+        os.mkdir('output_files')
+        tree = ET.parse(r'C:\Users\kenza\OneDrive\Documents\TTDS\collections\trec.sample.xml')
         root = tree.getroot()
         for doc in root.findall("DOC"):
             doc_no = doc.find("DOCNO").text
@@ -47,6 +52,16 @@ class SearchEngine(object):
             f.close()
 
     def preprocessing(self, documentName):
+        """
+        This function does all the preprocessing work and saves
+        the new preprocessed docs in the output files:
+        Line by line we tokenise then we do the stemming (using
+        a Porter Stemmer), the stopping and the case folding.
+
+        Args:
+            documentName (String documentName): This function
+            only takes a documentName
+        """
         # Opening the file
         f = open("input_files/" + documentName, "r",
                  encoding="ascii", errors="surrogateescape")
@@ -69,6 +84,20 @@ class SearchEngine(object):
         out.close()
 
     def inverted_index(self):
+        """
+        This function generates the inverted positional index.
+        - We iterate through the output files as we only want to
+        create an index of the already pre processed words.
+        - We then loop through the file checking terms and indices.
+        - If the term alrady has existed in a DocID before then we
+        just add another position
+        - If it has never appeared before, we initialise the position
+        array for that term with the index we are at and we increase
+        the frequency
+        - If we have never encountered the term bedore then we initialize
+        the list for that term, we set the frequency to 1 and add the doc
+        to the list of documents.
+        """
         file_names = natsorted(os.listdir("output_files"))
         for file in file_names:
             with open("output_files/" + file, 'r', encoding="ascii",
@@ -89,17 +118,17 @@ class SearchEngine(object):
                 elif term != '':
                     # Initialize the list.
                     self.inv_index[term] = []
-                    # The total frequency is 1.
+                    # Initialize frequency to 1
                     self.inv_index[term].append(1)
-                    # The postings list is initially empty.
+                    # Initialize docs lists
                     self.inv_index[term].append({})
-                    # Add doc ID to postings list.
+                    # Add doc ID to docs list
                     self.inv_index[term][1][fileno] = [pos]
 
-            # Map the file no. to the file name.
-            self.file_map[fileno] = "input/" + file
-
     def writeIndexToFile(self):
+        """
+        This function writes the index to a file named index.txt
+        """
         out = open("index.txt", "w")
         for term in (self.inv_index):
             out.write(term + ":" + str(self.inv_index[term][0]) + "\n")
@@ -111,8 +140,22 @@ class SearchEngine(object):
         out.close()
 
     def phraseSearch(self, query, out=0):
+        """
+        This function takes care of phrase search. Where the input looks like
+        "middle east". It updates the boolRes (storing the output for boolean
+        searches) list with a tuple of the form (query_no, document).
+
+        Args:
+            query (String): This function takes the query string as an argument
+            out (int, optional): This is a flag it's 0 when the function isn't
+            called from within the BooleanSearch function. Defaults to 0.
+
+        Returns:
+            list: This function returns a list of documents containing the docs
+            that match the query. We only use that if out=1.
+        """
         doc_keeper = []
-        terms = query.replace("\"", "").split()
+        terms = query[1:].replace("\"", "").split()
         term1 = terms[0]
         term2 = terms[1]
 
@@ -130,7 +173,7 @@ class SearchEngine(object):
             intersec = list(set(out1) & set(out2))
             # IF THE INTERSECTION IS NULL WE STOP THE SEARCH
             if intersec == []:
-                return "No results"
+                return []
             for i in intersec:
                 # GETTING THE TERMS POSITIONS FOR EACH DOC
                 positions_1 = self.inv_index[term1][1][i]
@@ -141,7 +184,7 @@ class SearchEngine(object):
                 k = j = 0
                 while k != len1:
                     while j != len2:
-                        if abs(positions_1[k] - positions_2[j] == 1):
+                        if abs(positions_1[k] - positions_2[j]) == 1:
                             query_no = query.split(' ')[0]
                             if (not(query_no, str(i)) in self.boolRes
                                     and int(i)not in doc_keeper):
@@ -180,7 +223,7 @@ class SearchEngine(object):
             intersec = list(set(out1) & set(out2))
             # IF THE INTERSECTION IS NULL WE STOP THE SEARCH
             if intersec == []:
-                return "No results"
+                pass
             for i in intersec:
                 # GETTING THE TERMS POSITIONS FOR EACH DOC
                 positions_1 = self.inv_index[term1][1][i]
@@ -191,7 +234,7 @@ class SearchEngine(object):
                 k = j = 0
                 while k != len1:
                     while j != len2:
-                        if abs(positions_1[k] - positions_2[j] <= proximity):
+                        if abs(positions_1[k] - positions_2[j]) <= proximity:
                             query_no = query.split(' ')[0]
                             if not(query_no, str(i)) in self.boolRes:
                                 self.boolRes.append((query_no, str(i)))
@@ -214,34 +257,32 @@ class SearchEngine(object):
             new_query = query[2:].strip()
             term1 = re.search('AND (.*)', new_query).group(1).strip()
             term2 = re.search('(.*) AND', new_query).group(1).strip()
+            print(term1)
+            print(term2)
+
             terms[term1] = []
             terms[term2] = []
-            checker = term1.replace("NOT ", "").replace("\"", "").strip()
-            checker += " "
-            checker += term2.replace("NOT ", "").replace("\"", "").strip()
-            checker = self.ps.stem(checker.strip().lower()).split(' ')
-            if (all(c in self.inv_index for c in checker)):
-                for term in terms:
-                    if "NOT" in term:
-                        not_term = re.search('NOT(.*)', term).group(1).strip()
-                        if "\"" in not_term:
-                            not_term = self.phraseSearch(not_term, out=1)
-                            terms[term] = self.notOperation(not_term, flag=1)
-                        else:
-                            not_term = self.ps.stem(not_term.lower())
-                            terms[term] = self.notOperation(not_term)
+            for term in terms:
+                if "NOT" in term:
+                    not_term = re.search('NOT(.*)', term).group(1).strip()
+                    if "\"" in not_term:
+                        not_term = self.phraseSearch(not_term, out=1)
+                        terms[term] = self.notOperation(not_term, flag=1)
                     else:
-                        if "\"" in term:
-                            terms[term] = self.phraseSearch(term, out=1)
-                        else:
-                            tmp_term = self.ps.stem(term.lower())
-                            terms[term] = [d for d in
-                                           self.inv_index[tmp_term][1]]
-                and_list = list(set(terms[term1]) & set(terms[term2]))
-                if and_list != []:
-                    for item in and_list:
-                        query_no = query.split(' ')[0]
-                        self.boolRes.append((query_no, str(item)))
+                        not_term = self.ps.stem(not_term.lower())
+                        terms[term] = self.notOperation(not_term)
+                else:
+                    print(term)
+                    if "\"" in term:
+                        terms[term] = self.phraseSearch(term, out=1)
+                    else:
+                        tmp_term = self.ps.stem(term.lower())
+                        terms[term] = [d for d in self.inv_index[tmp_term][1]]
+            and_list = list(set(terms[term1]) & set(terms[term2]))
+            if and_list != []:
+                for item in and_list:
+                    query_no = query.split(' ')[0]
+                    self.boolRes.append((query_no, str(item)))
         elif "OR" in query:
             terms = dict()
             new_query = query[2:].strip()
@@ -249,43 +290,40 @@ class SearchEngine(object):
             term2 = re.search('(.*) OR', new_query).group(1).strip()
             terms[term1] = []
             terms[term2] = []
-            checker = term1.replace("NOT ", "").replace("\"", "")
-            checker += " "
-            checker += term2.replace("NOT ", "").replace("\"", "")
-            checker = self.ps.stem(checker.strip().lower()).split(' ')
-            if (all(c in self.inv_index for c in checker)):
-                for term in terms:
-                    if "NOT" in term:
-                        not_term = re.search('NOT(.*)', term).group(1).strip()
-                        if "\"" in not_term:
-                            not_term = self.phraseSearch(not_term, out=1)
-                            terms[term] = self.notOperation(not_term, flag=1)
-                        else:
-                            not_term = self.ps.stem(not_term.lower())
-                            terms[term] = self.notOperation(not_term)
+            for term in terms:
+                if "NOT" in term:
+                    not_term = re.search('NOT(.*)', term).group(1).strip()
+                    if "\"" in not_term:
+                        not_term = self.phraseSearch(not_term, out=1)
+                        terms[term] = self.notOperation(not_term, flag=1)
                     else:
-                        tmp_term = self.ps.stem(term.lower())
-                        if "\"" in term:
-                            terms[term] = self.phraseSearch(term, out=1)
-                        else:
-                            terms[term] = [d for d
-                                           in self.inv_index[tmp_term][1]]
-                or_list = terms[term1] + list(set(terms[term2])
-                                              - set(terms[term1]))
-                if or_list != []:
-                    for item in or_list:
-                        query_no = query.split(' ')[0]
-                        self.boolRes.append((query_no, str(item)))
+                        not_term = self.ps.stem(not_term.lower())
+                        terms[term] = self.notOperation(not_term)
+                else:
+                    tmp_term = self.ps.stem(term.lower())
+                    if "\"" in term:
+                        terms[term] = self.phraseSearch(term, out=1)
+                    else:
+                        terms[term] = [d for d in self.inv_index[tmp_term][1]]
+            or_list = terms[term1] + list(set(terms[term2])
+                                          - set(terms[term1]))
+            if or_list != []:
+                for item in or_list:
+                    query_no = query.split(' ')[0]
+                    self.boolRes.append((query_no, str(item)))
 
     def booleanQueryFile(self, file="queries.boolean.txt"):
         f = open(file)
         lines = f.readlines()
         for line in lines:
             if "AND" in line or "OR" in line or "NOT" in line:
+                print("Bool Search: " + str(line[0:1]))
                 self.booleanSearch(line)
             elif "#" in line:
+                print("Proximity Search: " + str(line[0:1]))
                 self.proximitySearch(line)
             elif "\"" in line:
+                print("Phrase Search: " + str(line[0:1]))
                 self.phraseSearch(line)
             # CASE WHERE THE QUERY ONLY CONTAINS A SINGLE WORD
             elif len(line[2:].split(' ')) == 1:
