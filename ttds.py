@@ -148,8 +148,11 @@ class SearchEngine(object):
 
         Args:
             query (String): This function takes the query string as an argument
-            out (int, optional): This is a flag it's 0 when the function isn't
-            called from within the BooleanSearch function. Defaults to 0.
+            out (int, optional): This is a flag that defaults to 0 when the
+            function isn't called from within the BooleanSearch function. If it
+            is set to 1 then it means we are calling the function from within
+            the Boolean Search. The only difference is that we won't update the
+            boolRes immediately.
 
         Returns:
             list: This function returns a list of documents containing the docs
@@ -201,6 +204,15 @@ class SearchEngine(object):
         return doc_keeper
 
     def proximitySearch(self, query):
+        """
+        This function takes care of proximity search where the input looks
+        like #20(income, taxes). It updates the boolRes (storing the output
+        for boolean searches) list with a tuple of the form (query_no,
+        document).
+
+        Args:
+            query (String): This function takes the query string as an input
+        """
         count = 0
         # FINDING INTEGER PROXIMITY
         proximity = re.search('#(.*)\\(', query)
@@ -250,68 +262,144 @@ class SearchEngine(object):
         print(str(count) + " results found.")
 
     def notOperation(self, term, flag=0):
+        """
+        This function is a helper function for the boolean search.
+        It takes care of the NOT operation.
+
+        Args:
+            term ([int]): List of docs containing the negated term
+            flag (int, optional): This flag is only equal to 0 if the
+            negated term is a phrase. Defaults to 0.
+
+        Returns:
+            [type]: [description]
+        """
         docs = [int(i.replace("_out.txt", ""))
                 for i in os.listdir('output_files')]
         if flag == 0:
+            # Single Word Negation:
+            # Return all the docs that don't contain the
+            # negated term
             return [x for x in docs
                     if x not in self.inv_index[term][1]]
         else:
+            # Phrase Search Negation:
+            # Return all the docs except those in term
             return [x for x in docs if x not in term]
 
     def booleanSearch(self, query):
+        """
+        This function takes care of the boolean Search. It handles
+        the scenarios where the query contains a "OR" or "AND" operator.
+        Note that  Boolean queries will not contain more than one "AND"
+        or "OR" operator at a time. But a mix between phrase query and
+        one logical "AND" or "OR" operator can be there . Also "AND"
+        or "OR" can be mixed with NOT.
+
+        Args:
+            query (String): This function takes the query string as an
+            input argument.
+        """
+        # Case when there's an AND in the query
         if "AND" in query:
+            # Initialize the terms dictionary and get rid of the
+            # query number
             terms = dict()
             new_query = query[2:].strip()
+            # Separate the two terms: LHS and RHS of "AND"
             term1 = re.search('AND (.*)', new_query).group(1).strip()
             term2 = re.search('(.*) AND', new_query).group(1).strip()
 
+            # Initialize documents containing term as empty list
             terms[term1] = []
             terms[term2] = []
+
+            # Looping through the terms
             for term in terms:
+                # Checking if the term is negated
                 if "NOT" in term:
+                    # If the term is negated, check if it's a phrase
+                    # Or a single term by first getting rid of the "NOT"
                     not_term = re.search('NOT(.*)', term).group(1).strip()
                     if "\"" in not_term:
+                        # If it's a phrase, call phraseSearch first
+                        # Then call the notOperation helper with flag
                         not_term = self.phraseSearch(not_term, out=1)
                         terms[term] = self.notOperation(not_term, flag=1)
                     else:
+                        # Otherwise, preprocess the term and call
+                        # the notOperation helper
                         not_term = self.ps.stem(not_term.lower())
                         terms[term] = self.notOperation(not_term)
                 else:
+                    # It the term is not negated, check if it's a
+                    # phrase or a single term
                     if "\"" in term:
+                        # If it's a phrase call phraseSearch
                         terms[term] = self.phraseSearch(term, out=1)
                     else:
+                        # Otherwise, preprocess the term and look
+                        # for the docs containing it in the inverted
+                        # index.
                         tmp_term = self.ps.stem(term.lower())
                         terms[term] = [d for d in self.inv_index[tmp_term][1]]
+            # Since we are doing an "AND" operation, we append the
+            # intersection of the docs containing term1 and the docs
+            # containing term2 to boolRes
             and_list = list(set(terms[term1]) & set(terms[term2]))
             if and_list != []:
                 for item in and_list:
                     query_no = query.split(' ')[0]
                     self.boolRes.append((query_no, str(item)))
             print(str(len(and_list)) + " results found.")
+        # Case when there's an OR in the query
         elif "OR" in query:
+            # Initialize the terms dictionary and get rid of the
+            # query number
             terms = dict()
             new_query = query[2:].strip()
+            # Separate the two terms: LHS and RHS of "OR"
             term1 = re.search('OR (.*)', new_query).group(1).strip()
             term2 = re.search('(.*) OR', new_query).group(1).strip()
+
+            # Initialize documents containing term as empty list
             terms[term1] = []
             terms[term2] = []
+
+            # Looping through the terms
             for term in terms:
+                # Checking if the term is negated
                 if "NOT" in term:
+                    # If the term is negated, check if it's a phrase
+                    # Or a single term by first getting rid of the "NOT"
                     not_term = re.search('NOT(.*)', term).group(1).strip()
                     if "\"" in not_term:
+                        # If it's a phrase, call phraseSearch first
+                        # Then call the notOperation helper with flag
                         not_term = self.phraseSearch(not_term, out=1)
                         terms[term] = self.notOperation(not_term, flag=1)
                     else:
+                        # Otherwise, preprocess the term and call
+                        # the notOperation helper
                         not_term = self.ps.stem(not_term.lower())
                         terms[term] = self.notOperation(not_term)
                 else:
+                    # It the term is not negated, check if it's a
+                    # phrase or a single term
                     tmp_term = self.ps.stem(term.lower())
                     if "\"" in term:
+                        # If it's a phrase call phraseSearch
                         terms[term] = self.phraseSearch(term, out=1)
                     else:
+                        # Otherwise, preprocess the term and look
+                        # for the docs containing it in the inverted
+                        # index.
                         terms[term] = [d for d in self.inv_index[tmp_term][1]]
             or_list = terms[term1] + list(set(terms[term2])
                                           - set(terms[term1]))
+            # Since we are doing an "OR" operation, we append the
+            # union of the docs containing term1 and the docs
+            # containing term2 to boolRes
             if or_list != []:
                 for item in or_list:
                     query_no = query.split(' ')[0]
@@ -319,6 +407,14 @@ class SearchEngine(object):
                     print(str(len(or_list)) + " results found.")
 
     def booleanQueryFile(self, file="queries.boolean.txt"):
+        """
+        This function reads the boolean querries file and redirects
+        each query to the right function.
+
+        Args:
+            file (str, optional): This function takes a fike as an
+            argument. Defaults to "queries.boolean.txt".
+        """
         f = open(file)
         lines = f.readlines()
         for line in lines:
@@ -347,16 +443,43 @@ class SearchEngine(object):
                     pass
 
     def writeBooleanToFile(self):
+        """
+        This function writes the content of boolRes
+        to a formatted text file.
+        """
         out = open("results.boolean.txt", "w")
         for a, b in self.boolRes:
             out.write(a + "," + b + "\n")
         out.close()
 
     def normalize(self, scores):
+        """
+        This function normalizes the scores given by the ranked
+        search
+
+        Args:
+            scores ([float]): It takes the unormalized scores as
+            an input.
+
+        Returns:
+            [float]: This function returns the normalized scores
+            rounded to 4 decimal places.
+        """
         return np.around((scores - np.min(scores)) /
                          (np.max(scores) - np.min(scores)), decimals=4)
 
     def getTF(self, term, document):
+        """
+        This function is a helper function for the ranked search.
+        It computes the frequency of a term in a specific document.
+
+        Args:
+            term (string): This function takes a term as a first argument
+            document (int): And a document number as a second argument
+
+        Returns:
+            int: This function returns the computed term frequency (tf).
+        """
         try:
             tf = len(self.inv_index[term][1][document])
         except KeyError:
@@ -364,6 +487,17 @@ class SearchEngine(object):
         return tf
 
     def getDF(self, term):
+        """
+        This function is a helper function for the ranked search.
+        It finds the document frequency of a given term.
+
+        Args:
+            term (string): This function takes a term as an argument.
+
+        Returns:
+            int: This function returns the document frequency of the
+            term (df).
+        """
         try:
             df = self.inv_index[term][0]
         except KeyError:
@@ -371,39 +505,74 @@ class SearchEngine(object):
         return df
 
     def tfidfSearch(self, query):
+        """
+        This function takes care of performing the ranked search.
+        The queries have the following format:
+        1 Dow Jones industrial average stocks
+
+        Args:
+            query (String): This function takes the query string as an
+            argument.
+        """
+        # We start by preprocessing the terms in the query.
         terms = [self.ps.stem(t) for t in
                  re.sub('[^A-Za-z0-9 ]+', '', query[2:]
                         .strip().lower()).split(' ')]
+        # Getting all the docs
         docs = [int(i.replace("_out.txt", "")) for i
                 in os.listdir('output_files')]
         N = len(docs)
+
+        # Initializing the scores dict
         scores = dict()
+        # Looping through the terms
         for t in terms:
+            # First step is getting the document frequency
             df = self.getDF(t)
             for doc in docs:
+                # Then for each document we look for the
+                # term frequency
                 tf = self.getTF(t, doc)
                 if df > 0 and tf > 0:
+                    # If both the df and tf are greater than 0 then we
+                    # compute the idf and the score and we add the document
+                    # score to the dict
                     idf = math.log10(N/df)
                     try:
                         scores[doc] += (1+math.log10(tf))*idf
                     except KeyError:
                         scores[doc] = (1+math.log10(tf))*idf
                 else:
+                    # Otherwise we assign 0 to that document.
                     try:
                         scores[doc] += 0
                     except KeyError:
                         scores[doc] = 0
+        # Once all the scores are computed, we normalize them
+        # by calling the helper function on the dict's values
         score_vals = self.normalize(list(scores.values()))
         i = 0
         for doc in scores:
             scores[doc] = score_vals[i]
             i += 1
+        # We then sort the dict of scores by value in descending order
         scores = dict(sorted(scores.items(), key=lambda item: item[1],
                              reverse=True))
         query_no = query.split(' ')[0]
+        # Finally, we make sure we only append the top 150 results to the
+        # rankedRes
         self.rankedRes.append((query_no, list(scores.items())[:150]))
 
     def rankedQueryFile(self, file="queries.ranked.txt"):
+        """
+        This function reads the ranked search queries file.
+        It also writes the contents of rankedRes to a formatted
+        text file.
+
+        Args:
+            file (str, optional): This function takes a fike as an
+            argument. Defaults to "queries.ranked.txt".
+        """
         f = open(file)
         lines = f.readlines()
         out = open("results.ranked.txt", "w")
@@ -418,12 +587,12 @@ class SearchEngine(object):
 
 if __name__ == '__main__':
     se = SearchEngine()
-    # print("Splitting XML file into input files...")
-    # se.splittingDocs()
-    # for filename in os.listdir("input_files/"):
-    #     print("Pre processing " + str(filename) + " ...")
-    #     se.preprocessing(filename)
-    # print("Pre pocessing completed!")
+    print("Splitting XML file into input files...")
+    se.splittingDocs()
+    for filename in os.listdir("input_files/"):
+        print("Pre processing " + str(filename) + " ...")
+        se.preprocessing(filename)
+    print("Pre pocessing completed!")
     print("Generating inverted index")
     se.inverted_index()
     print("Success! Inverted Positional Index Generated!")
