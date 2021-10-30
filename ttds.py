@@ -41,8 +41,7 @@ class SearchEngine(object):
         """
         os.mkdir('input_files')
         os.mkdir('output_files')
-        tree = ET.parse(r'C:\Users\kenza\OneDrive\Documents\TTDS\
-            \collections\trec.5000.xml')
+        tree = ET.parse(r'C:\Users\kenza\OneDrive\Documents\TTDS\collections\trec.5000.xml')
         root = tree.getroot()
         for doc in root.findall("DOC"):
             doc_no = doc.find("DOCNO").text
@@ -550,11 +549,12 @@ class SearchEngine(object):
                         scores[doc] = 0
         # Once all the scores are computed, we normalize them
         # by calling the helper function on the dict's values
-        score_vals = self.normalize(list(scores.values()))
-        i = 0
-        for doc in scores:
-            scores[doc] = score_vals[i]
-            i += 1
+        # score_vals = self.normalize(list(scores.values()))
+        # i = 0
+        # for doc in scores:
+        #     scores[doc] = score_vals[i]
+        #     i += 1
+
         # We then sort the dict of scores by value in descending order
         scores = dict(sorted(scores.items(), key=lambda item: item[1],
                              reverse=True))
@@ -581,19 +581,19 @@ class SearchEngine(object):
 
         for q, res in self.rankedRes:
             for r in res:
-                out.write(q + "," + str(r[0]) + "," + str(r[1]) + "\n")
+                out.write(q + "," + str(r[0]) + "," + str(round(r[1], 4)) + "\n")
         out.close()
 
 
 if __name__ == '__main__':
     se = SearchEngine()
-    print("Splitting XML file into input files...")
-    se.splittingDocs()
-    for filename in os.listdir("input_files/"):
-        print("Pre processing " + str(filename) + " ...")
-        se.preprocessing(filename)
-    print("Pre pocessing completed!")
-    print("Generating inverted index")
+    # print("Splitting XML file into input files...")
+    # se.splittingDocs()
+    # for filename in os.listdir("input_files/"):
+    #     print("Pre processing " + str(filename) + " ...")
+    #     se.preprocessing(filename)
+    # print("Pre pocessing completed!")
+    # print("Generating inverted index")
     se.inverted_index()
     print("Success! Inverted Positional Index Generated!")
     se.writeIndexToFile()
