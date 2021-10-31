@@ -138,10 +138,11 @@ class SearchEngine(object):
         for term in (self.inv_index):
             out.write(term + ":" + str(self.inv_index[term][0]) + "\n")
             for file_no in self.inv_index[term][1]:
-                out.write("\t" + str(file_no) + ":" +
+                out.write("\t" + str(file_no) + ": " +
                           str(self.inv_index[term][1][file_no])
                           .replace('[', '')
-                          .replace(']', '') + "\n")
+                          .replace(']', '')
+                          .replace(' ', '') + "\n")
         out.close()
 
     def phraseSearch(self, query, out=0):
@@ -587,6 +588,14 @@ class SearchEngine(object):
 
 
 if __name__ == '__main__':
+    try:
+        shutil.rmtree("input_files")
+    except OSError as e:
+        print("Error: %s - %s." % (e.filename, e.strerror))
+    try:
+        shutil.rmtree("output_files")
+    except OSError as e:
+        print("Error: %s - %s." % (e.filename, e.strerror))
     se = SearchEngine()
     print("Splitting XML file into input files...")
     se.splittingDocs()
@@ -602,6 +611,10 @@ if __name__ == '__main__':
     se.inverted_index()
     print("Success! Inverted Positional Index Generated!")
     se.writeIndexToFile()
+    try:
+        shutil.rmtree("output_files")
+    except OSError as e:
+        print("Error: %s - %s." % (e.filename, e.strerror))
     print("Running Boolean queries")
     se.booleanQueryFile()
     se.writeBooleanToFile()
