@@ -1,3 +1,5 @@
+import numpy as np
+
 
 class Eval:
     def __init__(self, system_number, qrels_file, system_results_file):
@@ -70,14 +72,36 @@ class Eval:
                 scores.append(count/k)
         return sum(scores)/no_of_relevant
 
+    def compute_dg(self, scores):
+        dcg = []
+        for idx, score in scores:
+            res = score/np.log2(idx)
+            dcg.append(res)
+        return sum(dcg)
+
     def dcg_at_k(self, query, k):
-        pass
+        retrieved = [values[0] for values in self.system_results[query][:k]]
+        scores = []
+        dcg = 0
+        for idx in range(len(retrieved)):
+            for i, v in self.relevant_docs[query]:
+                if i == retrieved[idx]:
+                    scores.append((idx+1, v))
+                    break
+        if scores and scores[0][0] == 1:
+            dcg += scores[0][1]
+            dcg += self.compute_dg(scores[1:])
+        else:
+            dcg = self.compute_dg(scores)
+        return dcg
 
     def idcg_at_k(self, query, k):
-        pass
+        scores = [values[1] for values in self.relevant_docs[query][:k]]
+        scores = [(idx+1, value) for idx, value in enumerate(scores)]
+        return scores[0][1] + self.compute_dg(scores[1:])
 
     def ndcg_at_k(self, query, k):
-        pass
+        return self.dcg_at_k(query, k=k)/self.idcg_at_k(query, k=k)
 
 
 if __name__ == '__main__':
@@ -88,6 +112,8 @@ if __name__ == '__main__':
         recalls = []
         r_precisions = []
         avgs = []
+        dcgs_10 = []
+        dcgs_20 = []
         e = Eval(i, "qrels.csv", "system_results.csv")
         e.identify_system_results()
         for j in range(1, 11):
@@ -100,15 +126,25 @@ if __name__ == '__main__':
             r_precisions.append(r_prec)
             avg_prec = e.avg_precision(j)
             avgs.append(avg_prec)
+            dcg_10 = e.ndcg_at_k(j, 10)
+            dcgs_10.append(dcg_10)
+            dcg_20 = e.ndcg_at_k(j, 20)
+            dcgs_20.append(dcg_20)
             out.write("{0:.3f}".format(p_at_k)+",")
             out.write("{0:.3f}".format(r_at_k)+",")
             out.write("{0:.3f}".format(r_prec)+",")
-            out.write("{0:.3f}".format(avg_prec)+"\n")
+            out.write("{0:.3f}".format(avg_prec)+",")
+            out.write("{0:.3f}".format(dcg_10)+",")
+            out.write("{0:.3f}".format(dcg_20)+"\n")
         precisions = sum(precisions)/len(precisions)
         recalls = sum(recalls)/len(recalls)
         r_precisions = sum(r_precisions)/len(r_precisions)
         avgs = sum(avgs)/len(avgs)
+        dcgs_10 = sum(dcgs_10)/len(dcgs_10)
+        dcgs_20 = sum(dcgs_20)/len(dcgs_20)
         out.write(str(i) + "," + "mean," + "{0:.3f}".format(precisions) + ",")
         out.write("{0:.3f}".format(recalls) + ",")
         out.write("{0:.3f}".format(r_precisions) + ",")
-        out.write("{0:.3f}".format(avgs)+"\n")
+        out.write("{0:.3f}".format(avgs) + ",")
+        out.write("{0:.3f}".format(dcgs_10) + ",")
+        out.write("{0:.3f}".format(dcgs_20) + "\n")
