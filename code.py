@@ -104,7 +104,7 @@ class Eval:
         return self.dcg_at_k(query, k=k)/self.idcg_at_k(query, k=k)
 
 
-if __name__ == '__main__':
+def run_eval():
     out = open("ir_eval.csv", "w")
     out.write("system_number,query_number,P@10,R@50,r-precision,AP,nDCG@10,nDCG@20\n")
     for i in range(1, 7):
@@ -117,7 +117,6 @@ if __name__ == '__main__':
         e = Eval(i, "qrels.csv", "system_results.csv")
         e.identify_system_results()
         for j in range(1, 11):
-            out.write(str(i) + "," + str(j) + ",")
             p_at_k = e.precision_at_k(j)
             precisions.append(p_at_k)
             r_at_k = e.recall_at_k(j)
@@ -130,21 +129,11 @@ if __name__ == '__main__':
             dcgs_10.append(dcg_10)
             dcg_20 = e.ndcg_at_k(j, 20)
             dcgs_20.append(dcg_20)
-            out.write("{0:.3f}".format(p_at_k)+",")
-            out.write("{0:.3f}".format(r_at_k)+",")
-            out.write("{0:.3f}".format(r_prec)+",")
-            out.write("{0:.3f}".format(avg_prec)+",")
-            out.write("{0:.3f}".format(dcg_10)+",")
-            out.write("{0:.3f}".format(dcg_20)+"\n")
-        precisions = sum(precisions)/len(precisions)
-        recalls = sum(recalls)/len(recalls)
-        r_precisions = sum(r_precisions)/len(r_precisions)
-        avgs = sum(avgs)/len(avgs)
-        dcgs_10 = sum(dcgs_10)/len(dcgs_10)
-        dcgs_20 = sum(dcgs_20)/len(dcgs_20)
-        out.write(str(i) + "," + "mean," + "{0:.3f}".format(precisions) + ",")
-        out.write("{0:.3f}".format(recalls) + ",")
-        out.write("{0:.3f}".format(r_precisions) + ",")
-        out.write("{0:.3f}".format(avgs) + ",")
-        out.write("{0:.3f}".format(dcgs_10) + ",")
-        out.write("{0:.3f}".format(dcgs_20) + "\n")
+            line = "{},{},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f}\n".format(i, j, p_at_k, r_at_k, r_prec, avg_prec, dcg_10, dcg_20)
+            out.write(line)
+        line = "{},mean,{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f}\n".format(i, np.mean(precisions), np.mean(recalls), np.mean(r_precisions), np.mean(avgs), np.mean(dcgs_10), np.mean(dcgs_20))
+        out.write(line)
+
+
+if __name__ == '__main__':
+    run_eval()
