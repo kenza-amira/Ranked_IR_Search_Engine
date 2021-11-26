@@ -1,4 +1,8 @@
 import numpy as np
+import re
+from nltk.stem.snowball import SnowballStemmer
+from nltk.stem.porter import PorterStemmer
+import pandas as pd
 
 
 class Eval:
@@ -285,5 +289,109 @@ def run_eval():
         out.write(line)
 
 
+def preprocessing(text):
+
+    # Stop words preprocessing
+    stop_words = open("englishST.txt", "r")
+    st_words = [word.strip() for word in stop_words.readlines()]
+    
+
+    ps = SnowballStemmer(language='english')
+
+    keep_words = re.sub(r"[\W]", " ", text)
+    tokens = keep_words.split()
+    res = [ps.stem(i.lower()) for i in tokens if i.lower() not in st_words]
+
+    return res
+
+
+def get_freq(corpus_df):
+    corpus_freq = dict()
+    text = "".join([corpus_df[1][i]+"\n" for i in range(corpus_df.shape[0])])
+    for i in preprocessing(text):
+        if i in corpus_freq:
+            corpus_freq[i] += 1
+        else:
+            corpus_freq[i] = 1
+    return corpus_freq
+
+
+def index_frequency(file="train_and_dev.tsv"):
+    df = pd.read_csv(file, delimiter="\t", header=None)
+    text = "".join([df[1][i]+"\n" for i in range(df.shape[0])])
+    text = set(preprocessing(text))
+
+    quran = df.where(df[0] == 'Quran').dropna().reset_index(drop=True)
+    nt = df.where(df[0] == 'NT').dropna().reset_index(drop=True)
+    ot = df.where(df[0] == 'OT').dropna().reset_index(drop=True)
+    lengths = {'Quran': len(quran), 'NT': len(nt), 'OT': len(ot)}
+
+    quran = get_freq(quran)
+    nt = get_freq(nt)
+    ot = get_freq(ot)
+
+    return text, {'Quran': quran, 'NT': nt, 'OT': ot}, lengths
+
+
+def MI(N00, N01, N10, N11):
+    N = N00 + N01 + N10 + N11
+    l1 = N11 + N10
+    l0 = N01 + N00
+    r1 = N01 + N11
+    r0 = N00 + N10
+    P1 = np.log2(N*N11 / (l1*r1)) if N*N11 != 0 and l1*r1 != 0 else 0
+    P2 = np.log2(N*N01 / (l0*r1)) if N*N01 != 0 and l0*r1 != 0 else 0
+    P3 = np.log2(N*N10 / (l1*r0)) if N*N10 != 0 and l1*r0 != 0 else 0
+    P4 = np.log2(N*N00 / (l0*r0)) if N*N00 != 0 and l0*r0 != 0 else 0
+    return (N11/N)*P1 + (N01/N)*P2 + (N10/N)*P3 + (N00/N)*P4
+
+
+def CHI(N00, N01, N10, N11):
+    N = N00 + N01 + N10 + N11
+    return (N * ((N11 * N00 - N10 * N01) ** 2)) / ((N11 + N01) * (N11 + N10) * (N10 + N00) * (N01 + N00))
+
+
+def MI_X2_Res(text, freqs, lengths):
+    MIs = dict()
+    Chis = dict()
+    texts = ['Quran', 'NT', 'OT']
+    for corpus in texts:
+        MIs[corpus] = dict()
+        Chis[corpus] = dict()
+        compare = [c for c in texts if c != corpus]
+        target_length = lengths[corpus]
+        comapre_length = sum([lengths[c] for c in compare])
+        for term in text:
+            if term in freqs[corpus]:
+                N11 = freqs[corpus][term]
+            else:
+                N11 = 0
+            N01 = target_length - N11
+
+            N10 = 0
+            for doc in compare:
+                if term in freqs[doc]:
+                    N10 += freqs[doc][term]
+            N00 = comapre_length - N10
+            MIs[corpus][term] = MI(N00, N01, N10, N11)
+            Chis[corpus][term] = CHI(N00, N01, N10, N11)
+    return MIs, Chis
+
+
+def generate_ranked_list(MIs, Chis):
+    results_MI = dict()
+    results_Chi = dict()
+    texts = ['Quran', 'NT', 'OT']
+    for corpus in texts:
+        results_MI[corpus] = list(dict(sorted(MIs[corpus].items(), key=lambda item: item[1], reverse=True)).items())[:10]
+        results_Chi[corpus] = list(dict(sorted(Chis[corpus].items(), key=lambda item: item[1], reverse=True)).items())[:10]
+    return results_MI, results_Chi
+
+
 if __name__ == '__main__':
-    run_eval()
+    # run_eval()
+    total, freqs, lengths = index_frequency()
+    MIs, Chis = MI_X2_Res(total, freqs, lengths)
+    ranked_m, ranked_c = generate_ranked_list(MIs, Chis)
+    print(ranked_m, ranked_c)
+ 
