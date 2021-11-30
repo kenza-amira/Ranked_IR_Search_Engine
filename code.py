@@ -3,6 +3,11 @@ import re
 from nltk.stem.snowball import SnowballStemmer
 from nltk.stem.porter import PorterStemmer
 import pandas as pd
+from gensim.models import LdaModel
+from gensim.corpora.dictionary import Dictionary
+from tabulate import tabulate
+from scipy.sparse import dok_matrix
+from sklearn.svm import SVC
 
 
 class Eval:
@@ -294,8 +299,7 @@ def preprocessing(text):
     # Stop words preprocessing
     stop_words = open("englishST.txt", "r")
     st_words = [word.strip() for word in stop_words.readlines()]
-    
-
+    stop_words.close()
     ps = SnowballStemmer(language='english')
 
     keep_words = re.sub(r"[\W]", " ", text)
@@ -388,10 +392,176 @@ def generate_ranked_list(MIs, Chis):
     return results_MI, results_Chi
 
 
+def write_ranked(ranked_m, ranked_c):
+    out = open("ranked_results.txt", "w")
+    out.write("Mutual Information\n")
+    out.write(tabulate(ranked_m.items()))
+    out.write("\nChi Squared\n")
+    out.write(tabulate(ranked_c.items()))
+    out.close()
+
+
+def get_verses(file="train_and_dev.tsv"):
+    verses = dict()
+
+    df = pd.read_csv(file, delimiter="\t", header=None)
+    verses['All'] = [preprocessing(i) for i in df[1]]
+
+    quran = df.where(df[0] == 'Quran').dropna().reset_index(drop=True)
+    nt = df.where(df[0] == 'NT').dropna().reset_index(drop=True)
+    ot = df.where(df[0] == 'OT').dropna().reset_index(drop=True)
+
+    verses['Quran'] = [preprocessing(i) for i in quran[1]]
+    verses['NT'] = [preprocessing(i) for i in nt[1]]
+    verses['OT'] = [preprocessing(i) for i in ot[1]]
+
+    return verses
+
+
+def get_avg_score(topics):
+    res_dic = {}
+    for each in [z for x in topics for z in x]:
+        if each[0] not in res_dic.keys():
+            res_dic[each[0]] = each[1]
+            continue
+        temp = res_dic[each[0]]
+        temp += each[1]
+        res_dic[each[0]] = temp
+    for topic in res_dic.keys():
+        temp = res_dic[topic]
+        temp = temp / len(topics)
+        res_dic[topic] = temp
+    return sorted(res_dic.items(), key=lambda x: x[1], reverse=True)
+
+def get_LDA_result(score,lda,n):
+    s = ''
+    s += "topic ID: " + str(score[0]) + '    ' + 'score: ' + str(score[1]) + '\n'
+    top_n = lda.print_topic(score[0],n)
+    return s + top_n
+
+
+def preprocessing_no_stem(text):
+
+    # Stop words preprocessing
+    stop_words = open("englishST.txt", "r")
+    st_words = [word.strip() for word in stop_words.readlines()]
+    stop_words.close()
+
+    keep_words = re.sub(r"[\W]", " ", text)
+    tokens = keep_words.split()
+    res = [i.lower() for i in tokens if i.lower() not in st_words]
+
+    return res
+
+
+def dataset_splitting(file="train_and_dev.tsv"):
+    df = pd.read_csv(file, delimiter="\t", header=None)
+    df = df.sample(frac=1)
+
+    categories = [i for i in df[0]]
+    d = dict([(y, x+1) for x, y in enumerate(sorted(set(categories)))])
+
+    split = int(len(df)*(90/100))
+
+    train_df = df[:split].reset_index(drop=True)
+    dev_df = df[split:].reset_index(drop=True)
+
+    return d, train_df, dev_df
+
+
+def ID_mapping(train_df, dev_df):
+
+    ID_map_train = dict()
+    text_train = "".join([train_df[1][i]+"\n" for i in range(train_df.shape[0])])
+    text_train = set(preprocessing_no_stem(text_train))
+
+    ID_map_dev = dict()
+    text_dev = "".join([dev_df[1][i]+"\n" for i in range(dev_df.shape[0])])
+    text_dev = set(preprocessing_no_stem(text_dev))
+
+    count = 0
+    for word in text_train:
+        ID_map_train[word] = count
+        count += 1
+
+    for word in text_dev:
+        if word in ID_map_train:
+            ID_map_dev[word] = ID_map_train[word]
+        else:
+            ID_map_dev[word] = count
+            count += 1
+
+    no_of_terms = len(text_dev) + len(text_train)
+    return no_of_terms, ID_map_train, ID_map_dev
+
+
+def generate_matrix(ID_map, df, no_of_terms, d):
+    verses = [preprocessing_no_stem(i) for i in df[1]]
+    categories = [i for i in df[0]]
+    cats = [d[x] for x in categories]
+    S = dok_matrix((len(verses), no_of_terms))
+    for i in range(len(verses)):
+        count_dict = {t: verses[i].count(t) for t in verses[i]}
+        for item in count_dict.keys():
+            word = item
+            count = int(count_dict[item])
+            word_idx = ID_map[word]
+            S[i, word_idx] = count
+    return cats, S
+
+
+def baseline(X_train, X_dev, y_train):
+    model = SVC(C=1000)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_dev)
+    return y_pred
+
+
+def scores(y_pred, y_true, d):
+    classes = np.unique(y_pred + y_true)
+    dfpred = pd.DataFrame(y_pred)
+    dftrue = pd.DataFrame(y_true)
+    precisions = dict()
+    recalls = dict()
+    f1_scores = dict()
+    for c in classes:
+        idx = d.keys()[d.values().index(c)]
+        pred = dfpred[dfpred[0] == c]
+        index_pred = pred.index.tolist()
+        true = dftrue[dftrue[0] == c]
+        index_true = dftrue.reindex(index=index_pred)
+
+        p = sum(np.array(pred) == np.array(index_true)) / len(pred)
+        r = sum(np.array(pred) == np.array(index_true)) / len(true)
+        f = 2*p*r / (p+r)
+
+        precisions[idx] = p
+        recalls[idx] = r
+        f1_scores[idx] = f
+
+    macro_p = np.mean(precisions.values)
+    macro_r = np.mean(recalls.values)
+    macro_f = 2*macro_p*macro_r / (macro_p+macro_r)
+
+    precisions['Macro'] = macro_p
+    recalls['Macro'] = macro_r
+    f1_scores['Macro'] = macro_f
+    return precisions, recalls, f1_scores
+
+
 if __name__ == '__main__':
+    # TASK 1
     # run_eval()
-    total, freqs, lengths = index_frequency()
-    MIs, Chis = MI_X2_Res(total, freqs, lengths)
-    ranked_m, ranked_c = generate_ranked_list(MIs, Chis)
-    print(ranked_m, ranked_c)
- 
+    # TASK 2
+    # total, freqs, lengths = index_frequency()
+    # verses = get_verses()
+    # MIs, Chis = MI_X2_Res(total, freqs, lengths)
+    # ranked_m, ranked_c = generate_ranked_list(MIs, Chis)
+    # write_ranked(ranked_m, ranked_c)
+    # TASK 3
+    d, train_df, dev_df = dataset_splitting()
+    no_of_terms, ID_map_train, ID_map_dev = ID_mapping(train_df, dev_df)
+    y_train, X_train = generate_matrix(ID_map_train, train_df, no_of_terms, d)
+    y_dev, X_dev = generate_matrix(ID_map_dev, dev_df, no_of_terms, d)
+    y_pred = baseline(X_train, X_dev, y_train)
+    precisions, recalls, f1_scores = scores(y_pred, y_dev, d)
