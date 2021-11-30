@@ -513,19 +513,26 @@ def generate_matrix(ID_map, df, no_of_terms, d):
 def baseline(X_train, X_dev, y_train):
     model = SVC(C=1000)
     model.fit(X_train, y_train)
-    y_pred = model.predict(X_dev)
-    return y_pred
+    y_pred_dev = model.predict(X_dev)
+    y_pred_train = model.predict(X_train)
+    return y_pred_dev, y_pred_train
 
 
 def scores(y_pred, y_true, d):
-    classes = np.unique(y_pred + y_true)
+    classes = np.unique(np.append(y_pred, y_true))
+
     dfpred = pd.DataFrame(y_pred)
     dftrue = pd.DataFrame(y_true)
     precisions = dict()
     recalls = dict()
     f1_scores = dict()
+
+    rev_d = dict()
+    for item in d.keys():
+        rev_d[d[item]] = item
+
     for c in classes:
-        idx = d.keys()[d.values().index(c)]
+        idx = rev_d[c]
         pred = dfpred[dfpred[0] == c]
         index_pred = pred.index.tolist()
         true = dftrue[dftrue[0] == c]
@@ -535,18 +542,34 @@ def scores(y_pred, y_true, d):
         r = sum(np.array(pred) == np.array(index_true)) / len(true)
         f = 2*p*r / (p+r)
 
-        precisions[idx] = p
-        recalls[idx] = r
-        f1_scores[idx] = f
+        precisions[idx] = float(p[0])
+        recalls[idx] = float(r[0])
+        f1_scores[idx] = float(f[0])
 
-    macro_p = np.mean(precisions.values)
-    macro_r = np.mean(recalls.values)
+    macro_p = np.mean(list(precisions.values()))
+    macro_r = np.mean(list(recalls.values()))
     macro_f = 2*macro_p*macro_r / (macro_p+macro_r)
 
-    precisions['Macro'] = macro_p
-    recalls['Macro'] = macro_r
-    f1_scores['Macro'] = macro_f
+    precisions['Macro'] = float(macro_p)
+    recalls['Macro'] = float(macro_r)
+    f1_scores['Macro'] = float(macro_f)
     return precisions, recalls, f1_scores
+
+
+def write_classification(y_train, y_dev, y_pred_dev, y_pred_train, d):
+    with open("classification.csv", "w") as out:
+        out.write("system,split,p-quran,r-quran,f-quran,p-ot,r-ot,f-ot,p-nt,r-nt,f-nt,p-macro,r-macro,f-macro")
+        out.write("\n")
+        precisions, recalls, f1_scores = scores(y_pred_train, y_train, d)
+        out.write("baseline,train,{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f}"\
+            .format(precisions['Quran'], recalls['Quran'], f1_scores['Quran'], precisions['OT'], recalls['OT'], f1_scores['OT'],\
+                precisions['NT'], recalls['NT'], f1_scores['NT'], precisions['Macro'], recalls['Macro'], f1_scores['Macro']))
+        out.write("\n")
+        precisions, recalls, f1_scores = scores(y_pred_dev, y_dev, d)
+        out.write("baseline,dev,{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f}"\
+            .format(precisions['Quran'], recalls['Quran'], f1_scores['Quran'], precisions['OT'], recalls['OT'], f1_scores['OT'],\
+                precisions['NT'], recalls['NT'], f1_scores['NT'], precisions['Macro'], recalls['Macro'], f1_scores['Macro']))
+        out.write("\n")
 
 
 if __name__ == '__main__':
@@ -563,5 +586,5 @@ if __name__ == '__main__':
     no_of_terms, ID_map_train, ID_map_dev = ID_mapping(train_df, dev_df)
     y_train, X_train = generate_matrix(ID_map_train, train_df, no_of_terms, d)
     y_dev, X_dev = generate_matrix(ID_map_dev, dev_df, no_of_terms, d)
-    y_pred = baseline(X_train, X_dev, y_train)
-    precisions, recalls, f1_scores = scores(y_pred, y_dev, d)
+    y_pred_dev, y_pred_train = baseline(X_train, X_dev, y_train)
+    write_classification(y_train, y_dev, y_pred_dev, y_pred_train, d)
