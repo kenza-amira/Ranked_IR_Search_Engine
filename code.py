@@ -295,6 +295,7 @@ def run_eval():
         out.write(line)
 
 
+############################################## PART 2 ######################################""
 def preprocessing(text):
     """
     This function takes care of the preprocessing of the inputted
@@ -353,6 +354,20 @@ def get_freq(corpus_df):
 
 
 def index_frequency(file="train_and_dev.tsv"):
+    """
+    This function generates an index dictionnary for each corpus from
+    the tsv file.
+
+    Args:
+        file (str, optional): File storing our data.
+        Defaults to "train_and_dev.tsv".
+
+    Returns:
+        [String], dict(): Returns a list containing all the unique terms
+        and a dict storing the index for each of the corpus.
+        The index itself is a dictionnary where each term is mapped to the
+        number of documents it appears in.
+    """
     df = pd.read_csv(file, delimiter=r"\t", header=None, engine='python')
     text = "".join([df[1][i]+"\n" for i in range(df.shape[0])])
     text = set(preprocessing(text))
@@ -370,6 +385,21 @@ def index_frequency(file="train_and_dev.tsv"):
 
 
 def MI(N00, N01, N10, N11):
+    """
+    This function computes the Mutual Information for a term.
+    Following the formula given in the slides.
+
+    Args:
+        N00 (int): length of target corpus - N10
+        N01 (int): sum of lengths of the 2 other corpora - N11
+        N10 (int): number of documents the term appeared in the other
+        2 corpora
+        N11 (int): number of documents the term appeared in the target
+        corpus
+
+    Returns:
+        float: Mutual information for the term
+    """
     N = N00 + N01 + N10 + N11
     l1 = N11 + N10
     l0 = N01 + N00
@@ -383,48 +413,123 @@ def MI(N00, N01, N10, N11):
 
 
 def CHI(N00, N01, N10, N11):
+    """
+    This function computes the Chi squared score for a term.
+    Following the formula given in the slides.
+
+    Args:
+        N00 (int): length of target corpus - N10
+        N01 (int): sum of lengths of the 2 other corpora - N11
+        N10 (int): number of documents the term appeared in the other
+        2 corpora
+        N11 (int): number of documents the term appeared in the target
+        corpus
+
+    Returns:
+        float: Chi Squared score for the term
+    """
     N = N00 + N01 + N10 + N11
     return (N * ((N11 * N00 - N10 * N01) ** 2)) / ((N11 + N01) * (N11 + N10) * (N10 + N00) * (N01 + N00))
 
 
 def MI_X2_Res(text, freqs, lengths):
+    """
+    This function generates all the Mutual Information and Chi Squared
+    scores for all the corpuses.
+
+    Args:
+        text ([String]): list containing all the unique terms from all
+        the corpora
+        freqs (dict): dict storing the frequency index for each of the corpus.
+        The index itself is a dictionnary where each term is mapped to the
+        number of documents it appears in.
+        lengths (dict): dict storing the lengths of all the corpora
+
+    Returns:
+        MIs (dict()): A dictionnary with the Mutual Information scores
+        for all the corpora.
+        Chis (dict()): A dictionnary with the Chi Squared scores for
+        all the corpora.
+    """
     MIs = dict()
     Chis = dict()
     texts = ['Quran', 'NT', 'OT']
+    # Looping through corpora
     for corpus in texts:
         MIs[corpus] = dict()
         Chis[corpus] = dict()
+        # Get the other 2 corpora
         compare = [c for c in texts if c != corpus]
+        # Get the lengths
         target_length = lengths[corpus]
         comapre_length = sum([lengths[c] for c in compare])
+        # Looping through every unique term
         for term in text:
+            # Get N11: number of documents the term appeared in
+            # the target corpus using our freqs dict
             if term in freqs[corpus]:
                 N11 = freqs[corpus][term]
             else:
                 N11 = 0
+            # Compute N01 from N11
             N01 = target_length - N11
 
+            # Get N10: number of documents the term appeared in
+            # the other 2 corpora using our freqs dict
             N10 = 0
             for doc in compare:
                 if term in freqs[doc]:
                     N10 += freqs[doc][term]
+            # Compute N00 from N11
             N00 = comapre_length - N10
+
+            # Using the 4 computed values call the MI and CHI helper
+            # functions and update the output dictionnaries.
             MIs[corpus][term] = MI(N00, N01, N10, N11)
             Chis[corpus][term] = CHI(N00, N01, N10, N11)
+
     return MIs, Chis
 
 
 def generate_ranked_list(MIs, Chis):
+    """
+    This function sorts dictionnaries and keeps the top 10 results.
+    We use it for the Mutual Information and Chi Squared scores.
+    Args:
+        MIs (dict): Dictionnary storing all the Mutual Information
+        scores for each corpus
+        Chis (dict):  Dictionnary storing all the Chi Squared scores
+        for each corpus
+
+    Returns:
+        results_MI (dict): Top 10 terms with highest Mutual Information
+        scores for each corpus
+        results_Chi (dict): Top 10 terms with highest Chi Squared scores
+        for each corpus
+    """
     results_MI = dict()
     results_Chi = dict()
     texts = ['Quran', 'NT', 'OT']
     for corpus in texts:
-        results_MI[corpus] = list(dict(sorted(MIs[corpus].items(), key=lambda item: item[1], reverse=True)).items())[:10]
-        results_Chi[corpus] = list(dict(sorted(Chis[corpus].items(), key=lambda item: item[1], reverse=True)).items())[:10]
+        results_MI[corpus] = list(dict(sorted(
+            MIs[corpus].items(), key=lambda item: item[1], reverse=True))
+                                  .items())[:10]
+        results_Chi[corpus] = list(dict(sorted(
+            Chis[corpus].items(), key=lambda item: item[1], reverse=True))
+                                   .items())[:10]
     return results_MI, results_Chi
 
 
 def write_ranked(ranked_m, ranked_c):
+    """
+    Function that writes the Mutual Information and Chi Squared scores
+    to a file.
+    Args:
+        ranked_m (dict): Top 10 terms with highest Mutual Information
+        scores for each corpus
+        ranked_c (dict): Top 10 terms with highest Chi Squared scores
+        for each corpus
+    """
     out = open("ranked_results.txt", "w")
     out.write("Mutual Information\n")
     out.write(tabulate(ranked_m.items()))
@@ -434,6 +539,20 @@ def write_ranked(ranked_m, ranked_c):
 
 
 def get_verses(file="train_and_dev.tsv"):
+    """
+    This function creates a dictionnary mapping each corpus to a
+    list of lists. Where each element in the list is a preprocessed
+    line of the corpus.
+    This is useful for LDA.
+    Args:
+        file (str, optional):  File storing our data.
+        Defaults to "train_and_dev.tsv".
+
+    Returns:
+        N (int): length of all the corpora combined
+        verses (dict): dictionnary mapping each corpus to a list
+        of lists.
+    """
     verses = dict()
 
     df = pd.read_csv(file, delimiter=r"\t", header=None, engine='python')
@@ -447,10 +566,23 @@ def get_verses(file="train_and_dev.tsv"):
     verses['NT'] = [preprocessing(i) for i in nt[1]]
     verses['OT'] = [preprocessing(i) for i in ot[1]]
 
-    return sum([len(verses[i]) for i in verses.keys()]), verses
+    return len(verses['All']), verses
 
 
 def get_average_score(scores, i, j):
+    """
+    Helper function for getLDA(verses, length)
+    Gets the average score from a slice of a score list.
+    Args:
+        scores ([(topic, score)]): List of Topic distribution for the whole document.
+        Each element in the list is a pair of a topic’s id, and the probability
+        that was assigned to it.
+        i (int): slice start
+        j (int): slice end
+
+    Returns:
+        float: Average score.
+    """
     score = [0]*20
     for doc in scores[i:j]:
         for item in doc:
@@ -459,49 +591,86 @@ def get_average_score(scores, i, j):
 
 
 def get_LDA(verses, lengths):
+    """
+    This function takes care of the following tasks:
+    - For each corpus, computes the average score for each topic by
+    summing the document-topic probability for each document in that
+    corpus and dividing by the total number of documents in the corpus.
+    - Then, for each corpus, indetifies the topic that has the highest 
+    average score (3 topics in total). For each of those three topics
+    find the top 10 tokens with highest probability of belonging to that topic.
+
+    Args:
+        verses (dict): dictionnary mapping each corpus to a list
+        of lists.
+        lengths (dict):  dict storing the lengths of all the corpora
+
+    Returns:
+        top_words (dict): dict storing the top 10 tokents with highest
+        probability of belonging to top topic for each corpus
+        top_topics (dict): dict storing the top topic for each corpus
+    """
     all_text = verses['All']
     scores = []
 
+    # Initialize LDA model
     dictionary = Dictionary(all_text)
     corpus = [dictionary.doc2bow(text) for text in all_text]
     model = LdaModel(corpus, id2word=dictionary, num_topics=20, random_state=1000)
 
+    # Get all the topic distribution scores
     for i in range(len(all_text)):
         scores.append(model.get_document_topics(corpus[i]))
 
+    # Get the indices for slicing ready based on order in tsv file
     slice_OT = lengths['OT']
     slice_NT = lengths['OT']+lengths['NT']
     slice_Quran = sum([lengths[i] for i in lengths.keys()])
     avgs = dict()
+
+    # Get the average scores per corpus using helper function defined
+    # above
     avgs['OT'] = get_average_score(scores, 0, slice_OT)
     avgs['NT'] = get_average_score(scores, slice_OT, slice_NT)
     avgs['Quran'] = get_average_score(scores, slice_NT, slice_Quran)
 
+    # Get the top topic (with highest score for each corpus)
     top_topics = dict()
     for corpus in avgs.keys():
-        top_topics[corpus] = list(np.argsort(avgs[corpus])[:3])
+        top_topics[corpus] = int(np.argsort(avgs[corpus])[:1])
 
+    # For each corpus, get the top topic and find the top 10 tokens with
+    # highest probability of belonging to that topic
     top_words = dict()
     for corpus in top_topics.keys():
         topic_to_word = dict()
-        for topic in top_topics[corpus]:
-            topic_to_word[topic] = model.show_topic(topic)
+        topic = top_topics[corpus]
+        topic_to_word[topic] = model.show_topic(topic)
         top_words[corpus] = topic_to_word
+
     return top_words, top_topics
 
 
 def write_LDA_results(top_topics, top_words):
-    corpora = ['Quran','OT','NT']
-    with open("LDA_results.txt","w") as out:
+    """
+    Writing the LDA_results found to a file.
+    Args:
+        top_topics (dict): dict storing the top topic for each corpus
+        top_words (dict): dict storing the top 10 tokents with highest
+        probability of belonging to top topic for each corpus
+    """
+    corpora = ['Quran', 'OT', 'NT']
+    with open("LDA_results.txt", "w") as out:
         for corpus in corpora:
             out.write(str(corpus))
-            for topic in top_topics[corpus]:
-                out.write("\n")
-                out.write(str(topic)+": ")
-                out.write(", ".join(["(%s,%s)" % i for i in top_words[corpus][topic]]))
+            topic = top_topics[corpus]
+            out.write("\n")
+            out.write(str(topic) + ": ")
+            out.write(", ".join(["(%s,%s)" % i for i in top_words[corpus][topic]]))
             out.write("\n\n")
 
 
+############################################ PART 3 ############################################
 def preprocessing_no_stem(text):
 
     # Stop words preprocessing
@@ -518,7 +687,7 @@ def preprocessing_no_stem(text):
 
 def dataset_splitting(file="train_and_dev.tsv"):
     df = pd.read_csv(file, delimiter=r"\t", header=None, engine='python')
-    df = df.sample(frac=1)
+    df = df.sample(frac=1, random_state=100)
 
     categories = [i for i in df[0]]
     d = dict([(y, x+1) for x, y in enumerate(sorted(set(categories)))])
@@ -673,11 +842,11 @@ def generate_matrix_improved(ID_map, df, no_of_terms, d, doc_freq, N):
     return cats, S
 
 
-def get_freq_nostem(corpus_df):
+def get_freq_improved(corpus_df):
     corpus_freq = dict()
     text = [corpus_df[1][i]+"\n" for i in range(corpus_df.shape[0])]
     for i in text:
-        for j in set(preprocessing(i)):
+        for j in preprocessing(i):
             if j in corpus_freq:
                 corpus_freq[j] += 1
             else:
@@ -691,6 +860,7 @@ def SVM_improved(X_train, X_dev, y_train, C):
     y_pred_train = model.predict(X_train)
     y_pred_dev = model.predict(X_dev)
     return y_pred_dev, y_pred_train
+
 
 def write_classification_baseline(y_train, y_dev, y_pred_dev, y_pred_train, d):
     with open("classification.csv", "w") as out:
@@ -733,18 +903,22 @@ if __name__ == '__main__':
     N, verses = get_verses()
     top_words, top_topics = get_LDA(verses, lengths)
     write_LDA_results(top_topics, top_words)
-    # # TASK 3 SPLITTING + MAPPING
-    # d, train_df, dev_df, original_df = dataset_splitting()
-    # no_of_terms, ID_map_train, ID_map_dev = ID_mapping(train_df, dev_df)
+    # TASK 3 SPLITTING + MAPPING
+    d, train_df, dev_df, original_df = dataset_splitting()
 
-    # # TASK 3 BASELINE
-    # y_train, X_train = generate_matrix(ID_map_train, train_df, no_of_terms, d)
-    # y_dev, X_dev = generate_matrix(ID_map_dev, dev_df, no_of_terms, d)
-    # y_pred_dev, y_pred_train = baseline(X_train, X_dev, y_train)
-    # write_classification_baseline(y_train, y_dev, y_pred_dev, y_pred_train, d)
-    # # TASK 3 IMPROVED
-    # doc_freq = get_freq_nostem(original_df)
-    # y_train, X_train = generate_matrix_improved(ID_map_train, train_df, no_of_terms, d, doc_freq, N)
-    # y_dev, X_dev = generate_matrix_improved(ID_map_dev, dev_df, no_of_terms, d, doc_freq, N)
-    # y_pred_dev, y_pred_train = SVM_improved(X_train, X_dev, y_train, C=1000)
-    # write_classification_improved(y_train, y_dev, y_pred_dev, y_pred_train, d)
+    # TASK 3 BASELINE
+    no_of_terms, ID_map_train, ID_map_dev = ID_mapping(train_df, dev_df)
+    y_train, X_train = generate_matrix(ID_map_train, train_df, no_of_terms, d)
+    y_dev, X_dev = generate_matrix(ID_map_dev, dev_df, no_of_terms, d)
+    y_pred_dev, y_pred_train = baseline(X_train, X_dev, y_train)
+    write_classification_baseline(y_train, y_dev, y_pred_dev, y_pred_train, d)
+
+    # TASK 3 IMPROVED
+    doc_freq = get_freq(original_df)
+    no_of_terms, ID_map_train, ID_map_dev = ID_mapping_improved(train_df, dev_df)
+    y_train, X_train = generate_matrix_improved(ID_map_train, train_df, no_of_terms, d, doc_freq, N)
+    y_dev, X_dev = generate_matrix_improved(ID_map_dev, dev_df, no_of_terms, d, doc_freq, N)
+    for c in np.arange(800, 1700, 100):
+        print(c)
+        y_pred_dev, y_pred_train = SVM_improved(X_train, X_dev, y_train, C=int(c))
+        write_classification_improved(y_train, y_dev, y_pred_dev, y_pred_train, d)
