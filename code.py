@@ -2,6 +2,7 @@ import numpy as np
 import re
 from nltk.stem.snowball import SnowballStemmer
 from nltk.stem.porter import PorterStemmer
+from numpy.lib.function_base import append
 import pandas as pd
 from gensim.models import LdaModel
 from gensim.corpora.dictionary import Dictionary
@@ -295,33 +296,64 @@ def run_eval():
 
 
 def preprocessing(text):
+    """
+    This function takes care of the preprocessing of the inputted
+    text. It does case folding, stopping, stemming and tokenization
 
-    # Stop words preprocessing
+    Args:
+        text (String): Text to pre-process
+
+    Returns:
+        [String]: String list of the preprocessed input        
+    """
+    # Get stop words from file
     stop_words = open("englishST.txt", "r")
     st_words = [word.strip() for word in stop_words.readlines()]
     stop_words.close()
+
+    # Initializing stemmer (from nltk library)
     ps = SnowballStemmer(language='english')
 
+    # Keeping words only and splitting at spaces
     keep_words = re.sub(r"[\W]", " ", text)
     tokens = keep_words.split()
+
+    # Stemming, case-folding, stopping and tokenizing
     res = [ps.stem(i.lower()) for i in tokens if i.lower() not in st_words]
 
     return res
 
 
 def get_freq(corpus_df):
+    """
+    This function counts in how many documents each unique term
+    of the inputted corpus appears
+
+    Args:
+        corpus_df (Pandas DataFrame): Corpus DataFrame
+
+    Returns:
+        dict(): Dictionnary with key: word and value: number of documents
+        it appears in.
+    """
+    # Initializing the dict
     corpus_freq = dict()
-    text = "".join([corpus_df[1][i]+"\n" for i in range(corpus_df.shape[0])])
-    for i in preprocessing(text):
-        if i in corpus_freq:
-            corpus_freq[i] += 1
-        else:
-            corpus_freq[i] = 1
+    # Getting content of column 1(only text, not corpus name)
+    text = [corpus_df[1][i]+"\n" for i in range(corpus_df.shape[0])]
+    # Looping through each document (line in text)
+    for i in text:
+        # Looping through each unique term in the document
+        for j in set(preprocessing(i)):
+            # Updating the frequency
+            if j in corpus_freq:
+                corpus_freq[j] += 1
+            else:
+                corpus_freq[j] = 1
     return corpus_freq
 
 
 def index_frequency(file="train_and_dev.tsv"):
-    df = pd.read_csv(file, delimiter="\t", header=None)
+    df = pd.read_csv(file, delimiter=r"\t", header=None, engine='python')
     text = "".join([df[1][i]+"\n" for i in range(df.shape[0])])
     text = set(preprocessing(text))
 
@@ -404,7 +436,7 @@ def write_ranked(ranked_m, ranked_c):
 def get_verses(file="train_and_dev.tsv"):
     verses = dict()
 
-    df = pd.read_csv(file, delimiter="\t", header=None)
+    df = pd.read_csv(file, delimiter=r"\t", header=None, engine='python')
     verses['All'] = [preprocessing(i) for i in df[1]]
 
     quran = df.where(df[0] == 'Quran').dropna().reset_index(drop=True)
@@ -415,29 +447,59 @@ def get_verses(file="train_and_dev.tsv"):
     verses['NT'] = [preprocessing(i) for i in nt[1]]
     verses['OT'] = [preprocessing(i) for i in ot[1]]
 
-    return verses
+    return sum([len(verses[i]) for i in verses.keys()]), verses
 
 
-def get_avg_score(topics):
-    res_dic = {}
-    for each in [z for x in topics for z in x]:
-        if each[0] not in res_dic.keys():
-            res_dic[each[0]] = each[1]
-            continue
-        temp = res_dic[each[0]]
-        temp += each[1]
-        res_dic[each[0]] = temp
-    for topic in res_dic.keys():
-        temp = res_dic[topic]
-        temp = temp / len(topics)
-        res_dic[topic] = temp
-    return sorted(res_dic.items(), key=lambda x: x[1], reverse=True)
+def get_average_score(scores, i, j):
+    score = [0]*20
+    for doc in scores[i:j]:
+        for item in doc:
+            score[item[0]] += item[1]
+    return np.array(score)/(j-i)
 
-def get_LDA_result(score,lda,n):
-    s = ''
-    s += "topic ID: " + str(score[0]) + '    ' + 'score: ' + str(score[1]) + '\n'
-    top_n = lda.print_topic(score[0],n)
-    return s + top_n
+
+def get_LDA(verses, lengths):
+    all_text = verses['All']
+    scores = []
+
+    dictionary = Dictionary(all_text)
+    corpus = [dictionary.doc2bow(text) for text in all_text]
+    model = LdaModel(corpus, id2word=dictionary, num_topics=20, random_state=1000)
+
+    for i in range(len(all_text)):
+        scores.append(model.get_document_topics(corpus[i]))
+
+    slice_OT = lengths['OT']
+    slice_NT = lengths['OT']+lengths['NT']
+    slice_Quran = sum([lengths[i] for i in lengths.keys()])
+    avgs = dict()
+    avgs['OT'] = get_average_score(scores, 0, slice_OT)
+    avgs['NT'] = get_average_score(scores, slice_OT, slice_NT)
+    avgs['Quran'] = get_average_score(scores, slice_NT, slice_Quran)
+
+    top_topics = dict()
+    for corpus in avgs.keys():
+        top_topics[corpus] = list(np.argsort(avgs[corpus])[:3])
+
+    top_words = dict()
+    for corpus in top_topics.keys():
+        topic_to_word = dict()
+        for topic in top_topics[corpus]:
+            topic_to_word[topic] = model.show_topic(topic)
+        top_words[corpus] = topic_to_word
+    return top_words, top_topics
+
+
+def write_LDA_results(top_topics, top_words):
+    corpora = ['Quran','OT','NT']
+    with open("LDA_results.txt","w") as out:
+        for corpus in corpora:
+            out.write(str(corpus))
+            for topic in top_topics[corpus]:
+                out.write("\n")
+                out.write(str(topic)+": ")
+                out.write(", ".join(["(%s,%s)" % i for i in top_words[corpus][topic]]))
+            out.write("\n\n")
 
 
 def preprocessing_no_stem(text):
@@ -455,7 +517,7 @@ def preprocessing_no_stem(text):
 
 
 def dataset_splitting(file="train_and_dev.tsv"):
-    df = pd.read_csv(file, delimiter="\t", header=None)
+    df = pd.read_csv(file, delimiter=r"\t", header=None, engine='python')
     df = df.sample(frac=1)
 
     categories = [i for i in df[0]]
@@ -466,7 +528,7 @@ def dataset_splitting(file="train_and_dev.tsv"):
     train_df = df[:split].reset_index(drop=True)
     dev_df = df[split:].reset_index(drop=True)
 
-    return d, train_df, dev_df
+    return d, train_df, dev_df, df
 
 
 def ID_mapping(train_df, dev_df):
@@ -511,7 +573,7 @@ def generate_matrix(ID_map, df, no_of_terms, d):
 
 
 def baseline(X_train, X_dev, y_train):
-    model = SVC(C=1000)
+    model = SVC(C=800)
     model.fit(X_train, y_train)
     y_pred_dev = model.predict(X_dev)
     y_pred_train = model.predict(X_train)
@@ -556,7 +618,81 @@ def scores(y_pred, y_true, d):
     return precisions, recalls, f1_scores
 
 
-def write_classification(y_train, y_dev, y_pred_dev, y_pred_train, d):
+def ID_mapping_improved(train_df, dev_df):
+
+    ID_map_train = dict()
+    text_train = "".join([train_df[1][i]+"\n" for i in range(train_df.shape[0])])
+    text_train = set(preprocessing(text_train))
+
+    ID_map_dev = dict()
+    text_dev = "".join([dev_df[1][i]+"\n" for i in range(dev_df.shape[0])])
+    text_dev = set(preprocessing(text_dev))
+
+    count = 0
+    for word in text_train:
+        ID_map_train[word] = count
+        count += 1
+
+    for word in text_dev:
+        if word in ID_map_train:
+            ID_map_dev[word] = ID_map_train[word]
+        else:
+            ID_map_dev[word] = count
+            count += 1
+
+    no_of_terms = len(text_dev) + len(text_train)
+    return no_of_terms, ID_map_train, ID_map_dev
+
+import math
+def tf_idf(doc_freq, count, word, N):
+    try:
+        df = doc_freq[word]
+    except KeyError:
+        df = 0
+    tf = (1+math.log10(count))
+    try:
+        idf = math.log10(N/df)
+    except ZeroDivisionError:
+        idf = 0
+    return tf * idf
+
+
+def generate_matrix_improved(ID_map, df, no_of_terms, d, doc_freq, N):
+    verses = [preprocessing(i) for i in df[1]]
+    categories = [i for i in df[0]]
+    cats = [d[x] for x in categories]
+    S = dok_matrix((len(verses), no_of_terms))
+    for i in range(len(verses)):
+        count_dict = {t: verses[i].count(t) for t in verses[i]}
+        for item in count_dict.keys():
+            word = item
+            count = int(count_dict[item])
+            word_idx = ID_map[word]
+            # print(tf_idf(doc_freq, count, word, N))
+            S[i, word_idx] = tf_idf(doc_freq, count, word, N)
+    return cats, S
+
+
+def get_freq_nostem(corpus_df):
+    corpus_freq = dict()
+    text = [corpus_df[1][i]+"\n" for i in range(corpus_df.shape[0])]
+    for i in text:
+        for j in set(preprocessing(i)):
+            if j in corpus_freq:
+                corpus_freq[j] += 1
+            else:
+                corpus_freq[j] = 1
+    return corpus_freq
+
+
+def SVM_improved(X_train, X_dev, y_train, C):
+    model = SVC(C=C)
+    model.fit(X_train, y_train)
+    y_pred_train = model.predict(X_train)
+    y_pred_dev = model.predict(X_dev)
+    return y_pred_dev, y_pred_train
+
+def write_classification_baseline(y_train, y_dev, y_pred_dev, y_pred_train, d):
     with open("classification.csv", "w") as out:
         out.write("system,split,p-quran,r-quran,f-quran,p-ot,r-ot,f-ot,p-nt,r-nt,f-nt,p-macro,r-macro,f-macro")
         out.write("\n")
@@ -572,19 +708,43 @@ def write_classification(y_train, y_dev, y_pred_dev, y_pred_train, d):
         out.write("\n")
 
 
+def write_classification_improved(y_train, y_dev, y_pred_dev, y_pred_train, d):
+    with open("classification.csv", "a") as out:
+        precisions, recalls, f1_scores = scores(y_pred_train, y_train, d)
+        out.write("improved,train,{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f}"\
+            .format(precisions['Quran'], recalls['Quran'], f1_scores['Quran'], precisions['OT'], recalls['OT'], f1_scores['OT'],\
+                precisions['NT'], recalls['NT'], f1_scores['NT'], precisions['Macro'], recalls['Macro'], f1_scores['Macro']))
+        out.write("\n")
+        precisions, recalls, f1_scores = scores(y_pred_dev, y_dev, d)
+        out.write("improved,dev,{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f}"\
+            .format(precisions['Quran'], recalls['Quran'], f1_scores['Quran'], precisions['OT'], recalls['OT'], f1_scores['OT'],\
+                precisions['NT'], recalls['NT'], f1_scores['NT'], precisions['Macro'], recalls['Macro'], f1_scores['Macro']))
+        out.write("\n")
+
+
 if __name__ == '__main__':
     # TASK 1
     # run_eval()
     # TASK 2
-    # total, freqs, lengths = index_frequency()
-    # verses = get_verses()
-    # MIs, Chis = MI_X2_Res(total, freqs, lengths)
-    # ranked_m, ranked_c = generate_ranked_list(MIs, Chis)
-    # write_ranked(ranked_m, ranked_c)
-    # TASK 3
-    d, train_df, dev_df = dataset_splitting()
-    no_of_terms, ID_map_train, ID_map_dev = ID_mapping(train_df, dev_df)
-    y_train, X_train = generate_matrix(ID_map_train, train_df, no_of_terms, d)
-    y_dev, X_dev = generate_matrix(ID_map_dev, dev_df, no_of_terms, d)
-    y_pred_dev, y_pred_train = baseline(X_train, X_dev, y_train)
-    write_classification(y_train, y_dev, y_pred_dev, y_pred_train, d)
+    total, freqs, lengths = index_frequency()
+    MIs, Chis = MI_X2_Res(total, freqs, lengths)
+    ranked_m, ranked_c = generate_ranked_list(MIs, Chis)
+    write_ranked(ranked_m, ranked_c)
+    N, verses = get_verses()
+    top_words, top_topics = get_LDA(verses, lengths)
+    write_LDA_results(top_topics, top_words)
+    # # TASK 3 SPLITTING + MAPPING
+    # d, train_df, dev_df, original_df = dataset_splitting()
+    # no_of_terms, ID_map_train, ID_map_dev = ID_mapping(train_df, dev_df)
+
+    # # TASK 3 BASELINE
+    # y_train, X_train = generate_matrix(ID_map_train, train_df, no_of_terms, d)
+    # y_dev, X_dev = generate_matrix(ID_map_dev, dev_df, no_of_terms, d)
+    # y_pred_dev, y_pred_train = baseline(X_train, X_dev, y_train)
+    # write_classification_baseline(y_train, y_dev, y_pred_dev, y_pred_train, d)
+    # # TASK 3 IMPROVED
+    # doc_freq = get_freq_nostem(original_df)
+    # y_train, X_train = generate_matrix_improved(ID_map_train, train_df, no_of_terms, d, doc_freq, N)
+    # y_dev, X_dev = generate_matrix_improved(ID_map_dev, dev_df, no_of_terms, d, doc_freq, N)
+    # y_pred_dev, y_pred_train = SVM_improved(X_train, X_dev, y_train, C=1000)
+    # write_classification_improved(y_train, y_dev, y_pred_dev, y_pred_train, d)
