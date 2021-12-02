@@ -1,14 +1,13 @@
 import numpy as np
 import re
 from nltk.stem.snowball import SnowballStemmer
-from nltk.stem.porter import PorterStemmer
-from numpy.lib.function_base import append
 import pandas as pd
 from gensim.models import LdaModel
 from gensim.corpora.dictionary import Dictionary
 from tabulate import tabulate
 from scipy.sparse import dok_matrix
 from sklearn.svm import SVC
+import math
 
 
 class Eval:
@@ -616,7 +615,8 @@ def get_LDA(verses, lengths):
     # Initialize LDA model
     dictionary = Dictionary(all_text)
     corpus = [dictionary.doc2bow(text) for text in all_text]
-    model = LdaModel(corpus, id2word=dictionary, num_topics=20, random_state=1000)
+    model = LdaModel(corpus, id2word=dictionary, num_topics=20,
+                     random_state=np.random.seed())
 
     # Get all the topic distribution scores
     for i in range(len(all_text)):
@@ -812,7 +812,7 @@ def ID_mapping_improved(train_df, dev_df):
     no_of_terms = len(text_dev) + len(text_train)
     return no_of_terms, ID_map_train, ID_map_dev
 
-import math
+
 def tf_idf(doc_freq, count, word, N):
     try:
         df = doc_freq[word]
@@ -915,10 +915,13 @@ if __name__ == '__main__':
 
     # TASK 3 IMPROVED
     doc_freq = get_freq(original_df)
-    no_of_terms, ID_map_train, ID_map_dev = ID_mapping_improved(train_df, dev_df)
-    y_train, X_train = generate_matrix_improved(ID_map_train, train_df, no_of_terms, d, doc_freq, N)
-    y_dev, X_dev = generate_matrix_improved(ID_map_dev, dev_df, no_of_terms, d, doc_freq, N)
-    for c in np.arange(800, 1700, 100):
-        print(c)
-        y_pred_dev, y_pred_train = SVM_improved(X_train, X_dev, y_train, C=int(c))
-        write_classification_improved(y_train, y_dev, y_pred_dev, y_pred_train, d)
+    no_of_terms, ID_map_train, ID_map_dev = ID_mapping_improved(train_df,
+                                                                dev_df)
+    y_train, X_train = generate_matrix_improved(ID_map_train, train_df,
+                                                no_of_terms, d, doc_freq, N)
+    y_dev, X_dev = generate_matrix_improved(ID_map_dev, dev_df, no_of_terms,
+                                            d, doc_freq, N)
+    # for c in np.arange(800, 1700, 100):
+    #     print(c)
+    y_pred_dev, y_pred_train = SVM_improved(X_train, X_dev, y_train, C=1000)
+    write_classification_improved(y_train, y_dev, y_pred_dev, y_pred_train, d)
