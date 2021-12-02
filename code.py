@@ -585,8 +585,8 @@ def get_average_score(scores, i, j):
     score = [0]*20
     for doc in scores[i:j]:
         for item in doc:
-            score[item[0]] += item[1]
-    return np.array(score)/(j-i)
+            score[item[0]] += item[1] / len(scores)
+    return score
 
 
 def get_LDA(verses, lengths):
@@ -616,7 +616,7 @@ def get_LDA(verses, lengths):
     dictionary = Dictionary(all_text)
     corpus = [dictionary.doc2bow(text) for text in all_text]
     model = LdaModel(corpus, id2word=dictionary, num_topics=20,
-                     random_state=np.random.seed())
+                     random_state=123)
 
     # Get all the topic distribution scores
     for i in range(len(all_text)):
@@ -637,7 +637,7 @@ def get_LDA(verses, lengths):
     # Get the top topic (with highest score for each corpus)
     top_topics = dict()
     for corpus in avgs.keys():
-        top_topics[corpus] = int(np.argsort(avgs[corpus])[:1])
+        top_topics[corpus] = avgs[corpus].index(max(avgs[corpus]))
 
     # For each corpus, get the top topic and find the top 10 tokens with
     # highest probability of belonging to that topic
