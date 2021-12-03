@@ -322,7 +322,7 @@ def run_eval():
                 out.write("\n")
 
 
-############################################## PART 2 ######################################""
+# ######################## PART 2 ########################
 def preprocessing(text):
     """
     This function takes care of the preprocessing of the inputted
@@ -699,7 +699,7 @@ def write_LDA_results(top_topics, top_words):
             out.write("\n\n")
 
 
-############################################ PART 3 ############################################
+# ##################### PART 3 #####################
 def preprocessing_no_stem(text):
     """
     This function takes care of the preprocessing of the inputted
