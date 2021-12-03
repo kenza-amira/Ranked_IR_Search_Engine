@@ -701,7 +701,16 @@ def write_LDA_results(top_topics, top_words):
 
 ############################################ PART 3 ############################################
 def preprocessing_no_stem(text):
+    """
+    This function takes care of the preprocessing of the inputted
+    text without the stemming. It does case folding, stopping,
+    and tokenization.
+    Args:
+        text (String): Text to pre-process
 
+    Returns:
+        [String]: String list of the preprocessed input.
+    """
     # Stop words preprocessing
     stop_words = open("englishST.txt", "r")
     st_words = [word.strip() for word in stop_words.readlines()]
@@ -715,28 +724,77 @@ def preprocessing_no_stem(text):
 
 
 def tokenize(text):
+    """
+    This function only tokenizes the inputted text.
+    Only gets rid of punctuation.
+    Args:
+        text (String): Text to pre-process
+
+    Returns:
+        [String]: String list of the tokinzed input
+    """
     keep_words = re.sub(r"[\W]", " ", text)
     tokens = keep_words.split()
     return [i.lower() for i in tokens]
 
 
 def dataset_splitting(file="train_and_dev.tsv", n=90, test="test.tsv"):
+    """
+    This function shuffles the order of the data and splits the dataset into
+    a training set and a separate development set.
+    It also loads the test set from the given test file
+    Args:
+        file (str, optional): File containing training and development data.
+        Defaults to "train_and_dev.tsv".
+        n (int, optional): Where we split for testing. Defaults to 90.
+        test (str, optional):File containing test data. Defaults to "test.tsv".
+
+    Returns:
+        d (dict): mapping from the categories (corpora names) to numberic IDs
+        train_df (Pandas dataFrame): Training dataFrame
+        dev_df (Pandas dataFrame): Development dataFrame
+        test_df (Pandas dataFrame): Testing dataFrame
+        df (Pandas dataFrame): Shuffled original dataFrame
+    """
+
+    # Loading the original dataFrame and shuffling
     df = pd.read_csv(file, delimiter=r"\t", header=None, engine='python')
     df = df.sample(frac=1, random_state=100)
 
+    # Creating mapping from the categories (corpora names) to numberic IDs
     categories = [i for i in df[0]]
     d = dict([(y, x+1) for x, y in enumerate(sorted(set(categories)))])
 
+    # Getting splitting index to separate train and dec
     split = int(len(df)*(n/100))
 
+    # Creating training and development dataFrames
     train_df = df[:split].reset_index(drop=True)
     dev_df = df[split:].reset_index(drop=True)
 
+    # Loading test dataFrame from file
     test_df = pd.read_csv(test, delimiter=r"\t", header=None, engine='python')
     return d, train_df, dev_df, test_df, df
 
 
-def ID_mapping(train_df, dev_df, test_df, improved = False):
+def ID_mapping(train_df, dev_df, test_df, improved=False):
+    """
+    This function finds all the unique terms, and give each of them a unique ID
+    (starting from 0 to the number of terms).
+
+    Args:
+        train_df (Pandas dataFrame): Training dataFrame
+        dev_df (Pandas dataFrame): Development dataFrame
+        test_df (Pandas dataFrame): Test dataFrame
+        improved (bool, optional): If it's true, different way to process the frames.
+        Defaults to False (for baseline model).
+
+    Returns:
+        no_of_terms (int): total number of terms
+        ID_map_train (dict): mapping of unique IDs for each training term
+        ID_map_dev (dict): mapping of unique IDs for each development term
+        ID_map_test (dict): mapping of unique IDs for each test term
+    """
 
     ID_map_train = dict()
     text_train = "".join([train_df[1][i]+"\n" for i in range(train_df.shape[0])])
@@ -747,6 +805,7 @@ def ID_mapping(train_df, dev_df, test_df, improved = False):
     ID_map_test = dict()
     text_test = "".join([test_df[1][i]+"\n" for i in range(test_df.shape[0])])
 
+    # Preprocessing text depending on which model we are training.
     if improved:
         text_train = set(preprocessing(text_train))
         text_dev = set(preprocessing(text_dev))
@@ -756,6 +815,8 @@ def ID_mapping(train_df, dev_df, test_df, improved = False):
         text_dev = set(tokenize(text_dev))
         text_test = set(tokenize(text_test))
 
+    # Assigning unique IDs to terms while maintaining consistency
+    # over the corpora.
     count = 0
     for word in text_train:
         ID_map_train[word] = count
@@ -777,29 +838,87 @@ def ID_mapping(train_df, dev_df, test_df, improved = False):
             ID_map_test[word] = count
             count += 1
 
+    # Getting total number of terms
     all_terms = text_train.union(text_test).union(text_dev)
     no_of_terms = len(all_terms)
+
     return no_of_terms, ID_map_train, ID_map_dev, ID_map_test
 
 
-def generate_matrix(ID_map, df, no_of_terms, d):
-    verses = [tokenize(i) for i in df[1]]
+def generate_matrix(ID_map, df, no_of_terms, d, improved=False):
+    """
+    This function creates a count matrix where each row is a document and
+    each column corresponds to a word in the vocabulary.
+    If we are generating for the baseline model then (improved = False) then
+    the value of element (i,j) is the count of the number of times the word
+    j appears in document i.
+    Otherwise: The value of element (i,j) is the tf-idf score of the word j 
+    for document i.
+
+    Args:
+        ID_map (dict): mapping of unique IDs for each training term
+        df (Pandas dataFrame): training, dev or test dataFrame
+        no_of_terms (int): total number of terms in the corpora
+        d (dict): mapping from the categories (corpora names) to numberic IDs
+        improved (bool, optional): If improved different processing and scoring
+        function. Defaults to False.
+
+    Returns:
+        cats ([int]): true labels (y-input)
+        S (Sparse Matrix): X input for classifier
+    """
+    # Pre processing and getting the verses differently
+    # depending on which model we are training
+    if improved:
+        verses = [preprocessing(i) for i in df[1]]
+    else:
+        verses = [tokenize(i) for i in df[1]]
+
+    # Getting true y-labels
     categories = [i for i in df[0]]
     cats = [d[x] for x in categories]
+
+    # Initializing sparse matrix
     S = dok_matrix((len(verses), no_of_terms))
+
+    # Updating sparse matrix with score
     for i in range(len(verses)):
         count_dict = {t: verses[i].count(t) for t in verses[i]}
         for item in count_dict.keys():
             word = item
             count = int(count_dict[item])
             word_idx = ID_map[word]
-            S[i, word_idx] = count
+            # Different score function depending on model trained
+            if improved:
+                S[i, word_idx] = tf_idf(doc_freq, count, word, N)
+            else:
+                S[i, word_idx] = count
+
     return cats, S
 
 
 def SVM_model(X_train, X_dev, X_test, y_train, c=1000):
+    """
+    This function takes care of the classifier part.
+    Training on training set and predicting test and development
+    labels.
+
+    Args:
+        X_train (Sparse Matrix): X train inputs
+        X_dev (Sparse Matrix): X development inputs
+        X_test (Sparse Matrix): X test inputs
+        y_train ([int]): true labels for training set
+        c (int, optional): c parameter for SVM. Defaults to 1000.
+
+    Returns:
+        y_pred_dev (dict): Predicted labels for development set
+        y_pred_train (dict): Predicted labels for training set
+        y_pred_test (dict): Predicted labels for test set
+    """
     model = SVC(C=c)
+    # Training
     model.fit(X_train, y_train)
+    # Predicting
     y_pred_dev = model.predict(X_dev)
     y_pred_train = model.predict(X_train)
     y_pred_test = model.predict(X_test)
@@ -807,18 +926,41 @@ def SVM_model(X_train, X_dev, X_test, y_train, c=1000):
 
 
 def scores(y_pred, y_true, d):
+    """
+    This function computes all the required scores: precision, recall, and f1-score
+    for each of the 3 classes, as well as the macro-averaged precision, recall, and
+    f1-score across all three classes.
+
+    Args:
+        y_pred ([int]): List of predicted outputs
+        y_true ([type]): List of true labels
+        d (dict): mapping from the categories (corpora names) to numberic IDs
+
+    Returns:
+        precisions (dict): Dictionnary storing the precision scores for each of the
+        3 classes, as well as the macro-averaged precision.
+        recalls (dict): Dictionnary storing the recall scores for each of the 3 classes,
+        as well as the macro-averaged recall.
+        f1_scores (dict): Dictionnary storing the f1-scores for each of the 3 classes,
+        as well as the macro-averaged f1-scores.
+    """
     classes = np.unique(np.append(y_pred, y_true))
 
+    # Making dataframes out of the prediction and true labels
     dfpred = pd.DataFrame(y_pred)
     dftrue = pd.DataFrame(y_true)
+
+    # Initializing scores dictionnaries
     precisions = dict()
     recalls = dict()
     f1_scores = dict()
 
+    # Creating a mapping from the numberic IDs to the categories (corpora names)
     rev_d = dict()
     for item in d.keys():
         rev_d[d[item]] = item
 
+    # Looping through all the classes
     for c in classes:
         idx = rev_d[c]
         pred = dfpred[dfpred[0] == c]
@@ -826,6 +968,8 @@ def scores(y_pred, y_true, d):
         true = dftrue[dftrue[0] == c]
         index_true = dftrue.reindex(index=index_pred)
 
+        # Computing precision, recall and f1-score and updating the
+        # dictionnary
         p = sum(np.array(pred) == np.array(index_true)) / len(pred)
         r = sum(np.array(pred) == np.array(index_true)) / len(true)
         f = 2*p*r / (p+r)
@@ -834,6 +978,7 @@ def scores(y_pred, y_true, d):
         recalls[idx] = float(r[0])
         f1_scores[idx] = float(f[0])
 
+    # Getting Macro values and updating the dictionnary
     macro_p = np.mean(list(precisions.values()))
     macro_r = np.mean(list(recalls.values()))
     macro_f = 2*macro_p*macro_r / (macro_p+macro_r)
@@ -841,10 +986,24 @@ def scores(y_pred, y_true, d):
     precisions['Macro'] = float(macro_p)
     recalls['Macro'] = float(macro_r)
     f1_scores['Macro'] = float(macro_f)
+
     return precisions, recalls, f1_scores
 
 
 def tf_idf(doc_freq, count, word, N):
+    """
+    Helper function that computes the tf-idf score for a term.
+
+    Args:
+        doc_freq (dict): dictionnary mapping a term with its
+        document frequency
+        count (int): Term frequency
+        word (String): Term considered
+        N (int): Total number of documents
+
+    Returns:
+        tf*idf (float): tf-idf score for the considered term.
+    """
     try:
         df = doc_freq[word]
     except KeyError:
@@ -855,22 +1014,6 @@ def tf_idf(doc_freq, count, word, N):
     except ZeroDivisionError:
         idf = 0
     return tf * idf
-
-
-def generate_matrix_improved(ID_map, df, no_of_terms, d, doc_freq, N):
-    verses = [preprocessing(i) for i in df[1]]
-    categories = [i for i in df[0]]
-    cats = [d[x] for x in categories]
-    S = dok_matrix((len(verses), no_of_terms))
-    for i in range(len(verses)):
-        count_dict = {t: verses[i].count(t) for t in verses[i]}
-        for item in count_dict.keys():
-            word = item
-            count = int(count_dict[item])
-            word_idx = ID_map[word]
-            # print(tf_idf(doc_freq, count, word, N))
-            S[i, word_idx] = tf_idf(doc_freq, count, word, N)
-    return cats, S
 
 
 def get_freq_improved(corpus_df):
@@ -884,7 +1027,20 @@ def get_freq_improved(corpus_df):
                 corpus_freq[j] = 1
     return corpus_freq
 
-def write_classification_baseline(y_train, y_dev, y_test, y_pred_dev, y_pred_train, y_pred_test, d):
+
+def write_classification_baseline(y_train, y_dev, y_test, y_pred_dev,
+                                  y_pred_train, y_pred_test, d):
+    """
+    Function that writes the scores for the baseline algorithm to a file.
+    Args:
+        y_train ([int]): True labels for training set
+        y_dev ([int]): True labels for development set
+        y_test ([int]): True labels for test set
+        y_pred_dev ([int]): Predicted development labels
+        y_pred_train ([int]): Predicted train labels
+        y_pred_test ([int]): Predicted test labels
+        d (dict): mapping from the categories (corpora names) to numberic IDs
+    """
     with open("classification.csv", "w") as out:
         out.write("system,split,p-quran,r-quran,f-quran,p-ot,r-ot,f-ot,p-nt,r-nt,f-nt,p-macro,r-macro,f-macro")
         out.write("\n")
@@ -905,7 +1061,21 @@ def write_classification_baseline(y_train, y_dev, y_test, y_pred_dev, y_pred_tra
         out.write("\n")
 
 
-def write_classification_improved(y_train, y_dev, y_pred_dev, y_pred_train, d):
+def write_classification_improved(y_train, y_dev, y_test, y_pred_dev,
+                                  y_pred_train, y_pred_test, d):
+    """
+    Function that appends the results of the improved algorithm to the file containing
+    the scores for the baseline model.
+
+    Args:
+        y_train ([int]): True labels for training set
+        y_dev ([int]): True labels for development set
+        y_test ([int]): True labels for test set
+        y_pred_dev ([int]): Predicted development labels
+        y_pred_train ([int]): Predicted train labels
+        y_pred_test ([int]): Predicted test labels
+        d (dict): mapping from the categories (corpora names) to numberic IDs
+    """
     with open("classification.csv", "a") as out:
         precisions, recalls, f1_scores = scores(y_pred_train, y_train, d)
         out.write("improved,train,{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f}"\
@@ -917,13 +1087,21 @@ def write_classification_improved(y_train, y_dev, y_pred_dev, y_pred_train, d):
             .format(precisions['Quran'], recalls['Quran'], f1_scores['Quran'], precisions['OT'], recalls['OT'], f1_scores['OT'],\
                 precisions['NT'], recalls['NT'], f1_scores['NT'], precisions['Macro'], recalls['Macro'], f1_scores['Macro']))
         out.write("\n")
+        precisions, recalls, f1_scores = scores(y_pred_test, y_test, d)
+        out.write("improved,test,{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f},{:.3f}"\
+            .format(precisions['Quran'], recalls['Quran'], f1_scores['Quran'], precisions['OT'], recalls['OT'], f1_scores['OT'],\
+                precisions['NT'], recalls['NT'], f1_scores['NT'], precisions['Macro'], recalls['Macro'], f1_scores['Macro']))
+        out.write("\n")
 
 
 if __name__ == '__main__':
+    """
+    Runs the entire system
+    """
     # TASK 1
     run_eval()
 
-    # # TASK 2
+    # TASK 2
     total, freqs, lengths = index_frequency()
     MIs, Chis = MI_X2_Res(total, freqs, lengths)
     ranked_m, ranked_c = generate_ranked_list(MIs, Chis)
@@ -947,14 +1125,12 @@ if __name__ == '__main__':
     # TASK 3 IMPROVED
     doc_freq = get_freq_improved(original_df)
     no_of_terms, ID_map_train, ID_map_dev, ID_map_test = ID_mapping(train_df, dev_df, test_df, improved=True)
-    y_train, X_train = generate_matrix_improved(ID_map_train, train_df,
-                                                no_of_terms, d, doc_freq, N)
-    y_dev, X_dev = generate_matrix_improved(ID_map_dev, dev_df, no_of_terms,
-                                            d, doc_freq, N)
-    y_test, X_test = generate_matrix_improved(ID_map_test, test_df, no_of_terms,
-                                              d, doc_freq, N)
-    # for c in np.arange(800, 1700, 100):
-    #     print(c)
-    y_pred_dev, y_pred_train = SVM_model(X_train, X_dev, X_test, y_train, c=800)
-    write_classification_improved(y_train, y_dev, y_test, 
+    y_train, X_train = generate_matrix(ID_map_train, train_df, no_of_terms, d,
+                                       doc_freq, N, improved=True)
+    y_dev, X_dev = generate_matrix(ID_map_dev, dev_df, no_of_terms, d, doc_freq,
+                                   N, improved=True)
+    y_test, X_test = generate_matrix(ID_map_test, test_df, no_of_terms,d, doc_freq,
+                                     N, improved=True)
+    y_pred_dev, y_pred_train, y_pred_test = SVM_model(X_train, X_dev, X_test, y_train, c=800)
+    write_classification_improved(y_train, y_dev, y_test,
                                   y_pred_dev, y_pred_train, y_pred_test, d)
