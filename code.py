@@ -826,7 +826,6 @@ def ID_mapping(train_df, dev_df, test_df, improved=False):
             ID_map_dev[word] = ID_map_train[word]
         else:
             ID_map_dev[word] = count
-            print(word)
             count += 1
 
     for word in text_test:
@@ -973,9 +972,8 @@ def scores(y_pred, y_true, d):
     """
     classes = np.unique(np.append(y_pred, y_true))
 
-    # Making dataframes out of the prediction and true labels
-    dfpred = pd.DataFrame(y_pred)
-    dftrue = pd.DataFrame(y_true)
+    y_pred = np.array(y_pred)
+    y_true = np.array(y_true)
 
     # Initializing scores dictionnaries
     precisions = dict()
@@ -990,20 +988,20 @@ def scores(y_pred, y_true, d):
     # Looping through all the classes
     for c in classes:
         idx = rev_d[c]
-        pred = dfpred[dfpred[0] == c]
-        index_pred = pred.index.tolist()
-        true = dftrue[dftrue[0] == c]
-        index_true = dftrue.reindex(index=index_pred)
+        TP = sum(np.logical_and(np.equal(y_true, c), np.equal(y_pred, c)))
+        TN = sum(np.logical_and(np.not_equal(y_true, c), np.not_equal(y_pred, c)))
+        FP = sum(np.logical_and(np.not_equal(y_true, c), np.equal(y_pred, c)))
+        FN = sum(np.logical_and(np.equal(y_true, c), np.not_equal(y_pred, c)))
 
         # Computing precision, recall and f1-score and updating the
         # dictionnary
-        p = sum(np.array(pred) == np.array(index_true)) / len(pred)
-        r = sum(np.array(pred) == np.array(index_true)) / len(true)
+        p = TP / (TP + FP)
+        r = TP / (TP + FN)
         f = 2*p*r / (p+r)
 
-        precisions[idx] = float(p[0])
-        recalls[idx] = float(r[0])
-        f1_scores[idx] = float(f[0])
+        precisions[idx] = float(p)
+        recalls[idx] = float(r)
+        f1_scores[idx] = float(f)
 
     # Getting Macro values and updating the dictionnary
     macro_p = np.mean(list(precisions.values()))
@@ -1018,6 +1016,18 @@ def scores(y_pred, y_true, d):
 
 
 def get_freq_improved(corpus_df):
+    """
+    This function counts how many times a term appears in the
+    tokenized corpora.
+
+    Args:
+        corpus_df (Pandas dataFrame): DataFrame containing the entire
+        corpora
+
+    Returns:
+        corpus_freq (dict): Dictionnary mapping the term with its number
+        of occurences.
+    """
     corpus_freq = dict()
     text = [corpus_df[1][i]+"\n" for i in range(corpus_df.shape[0])]
     for i in text:
@@ -1104,33 +1114,6 @@ if __name__ == '__main__':
 
     # TASK 2
     total, freqs, lengths = index_frequency()
-    
-    outss = ['yet', 'i', 'will', 'also', 'make', 'a', 'nation', 'of', 'the', 'son', 'of', 'the', 'bondwoman', 'because', 'he', 'is', 'your', 'seed', 
-             'so', 'i', 'swore', 'in', 'my', 'wrath', 'they', 'shall', 'not', 'enter', 'my', 'rest',
-             'pursue', 'peace', 'with', 'all', 'people', 'and', 'holiness', 'without', 'which', 'no', 'one', 'will', 'see', 'the', 'lord',
-             'and', 'they', 'let', 'go', 'the', 'anchors', 'and', 'left', 'them', 'in', 'the', 'sea', 'meanwhile', 'loosing', 'the', 'rudder', 'ropes', 'and', 'they', 'hoisted', 'the', 'mainsail', 'to', 'the', 'wind', 'and', 'made', 'for', 'shore',
-             'when', 'moses', 'saw', 'it', 'he', 'marveled', 'at', 'the', 'sight', 'and', 'as', 'he', 'drew', 'near', 'to', 'observe', 'the', 'voice', 'of', 'the', 'lord', 'came', 'to', 'him',
-             'and', 'he', 'turned', 'to', 'their', 'idols', 'and', 'asked', 'them', 'do', 'you', 'eat']
-    
-    ps = SnowballStemmer(language='english')
-    with open("temp.txt", "w") as t:
-        t.write("word, OT, NT, Quran\n")
-        for word in outss:
-            word = ps.stem(word)
-            try:
-                freq_OT = freqs['OT'][word]
-            except KeyError:
-                freq_OT = 0
-            try:
-                freq_NT = freqs['NT'][word]
-            except KeyError:
-                freq_NT = 0
-            try:
-                freq_Quran = freqs['Quran'][word]
-            except KeyError:
-                freq_Quran = 0
-            t.write('{},{},{},{}\n'.format(word, freq_OT, freq_NT, freq_Quran))
-    
     MIs, Chis = MI_X2_Res(total, freqs, lengths)
     ranked_m, ranked_c = generate_ranked_list(MIs, Chis)
     write_ranked(ranked_m, ranked_c)
@@ -1147,9 +1130,9 @@ if __name__ == '__main__':
     y_dev, X_dev = generate_matrix(ID_map_dev, dev_df, no_of_terms, d)
     y_test, X_test = generate_matrix(ID_map_test, test_df, no_of_terms, d)
     y_pred_dev, y_pred_train, y_pred_test = SVM_model(X_train, X_dev, X_test, y_train)
+
+    # Get some Misclassified examples from development set and print categories mapping
     breakpoint = 0
-    
-    # Get some Misclassified examples from development set
     print(d)
     verses_copy = [tokenize(i) for i in dev_df[1]]
     for i, (a, b) in enumerate(zip(y_dev, y_pred_dev)):
