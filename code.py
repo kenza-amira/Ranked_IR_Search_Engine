@@ -565,6 +565,29 @@ def write_ranked(ranked_m, ranked_c):
     out.close()
 
 
+def preprocessing_no_stem(text):
+    """
+    This function takes care of the preprocessing of the inputted
+    text without the stemming. It does case folding, stopping,
+    and tokenization.
+    Args:
+        text (String): Text to pre-process
+
+    Returns:
+        [String]: String list of the preprocessed input.
+    """
+    # Stop words preprocessing
+    stop_words = open("englishST.txt", "r")
+    st_words = [word.strip() for word in stop_words.readlines()]
+    stop_words.close()
+
+    keep_words = re.sub(r"[\W]", " ", text)
+    tokens = keep_words.split()
+    res = [i.lower() for i in tokens if i.lower() not in st_words]
+
+    return res
+
+
 def get_verses(file="train_and_dev.tsv"):
     """
     This function creates a dictionnary mapping each corpus to a
@@ -583,7 +606,7 @@ def get_verses(file="train_and_dev.tsv"):
     verses = dict()
 
     df = pd.read_csv(file, delimiter=r"\t", header=None, engine='python')
-    verses['All'] = [preprocessing(i) for i in df[1]]
+    verses['All'] = [preprocessing_no_stem(i) for i in df[1]]
 
     quran = df.where(df[0] == 'Quran').dropna().reset_index(drop=True)
     nt = df.where(df[0] == 'NT').dropna().reset_index(drop=True)
@@ -643,8 +666,7 @@ def get_LDA(verses, lengths):
     # Initialize LDA model
     dictionary = Dictionary(all_text)
     corpus = [dictionary.doc2bow(text) for text in all_text]
-    model = LdaModel(corpus, id2word=dictionary, num_topics=20,
-                     random_state=123)
+    model = LdaModel(corpus, id2word=dictionary, num_topics=20)
 
     # Get all the topic distribution scores
     for i in range(len(all_text)):
@@ -700,29 +722,6 @@ def write_LDA_results(top_topics, top_words):
 
 
 # ##################### PART 3 #####################
-def preprocessing_no_stem(text):
-    """
-    This function takes care of the preprocessing of the inputted
-    text without the stemming. It does case folding, stopping,
-    and tokenization.
-    Args:
-        text (String): Text to pre-process
-
-    Returns:
-        [String]: String list of the preprocessed input.
-    """
-    # Stop words preprocessing
-    stop_words = open("englishST.txt", "r")
-    st_words = [word.strip() for word in stop_words.readlines()]
-    stop_words.close()
-
-    keep_words = re.sub(r"[\W]", " ", text)
-    tokens = keep_words.split()
-    res = [i.lower() for i in tokens if i.lower() not in st_words]
-
-    return res
-
-
 def tokenize(text):
     """
     This function only tokenizes the inputted text.
@@ -827,6 +826,7 @@ def ID_mapping(train_df, dev_df, test_df, improved=False):
             ID_map_dev[word] = ID_map_train[word]
         else:
             ID_map_dev[word] = count
+            print(word)
             count += 1
 
     for word in text_test:
@@ -845,14 +845,40 @@ def ID_mapping(train_df, dev_df, test_df, improved=False):
     return no_of_terms, ID_map_train, ID_map_dev, ID_map_test
 
 
-def generate_matrix(ID_map, df, no_of_terms, d, improved=False):
+def tf_idf(doc_freq, count, word, N):
+    """
+    Helper function that computes the tf-idf score for a term.
+
+    Args:
+        doc_freq (dict): dictionnary mapping a term with its
+        document frequency
+        count (int): Term frequency
+        word (String): Term considered
+        N (int): Total number of documents
+
+    Returns:
+        tf*idf (float): tf-idf score for the considered term.
+    """
+    try:
+        df = doc_freq[word]
+    except KeyError:
+        df = 0
+    tf = (1+math.log10(count))
+    try:
+        idf = math.log10(N/df)
+    except ZeroDivisionError:
+        idf = 0
+    return tf * idf
+
+
+def generate_matrix(ID_map, df, no_of_terms, d, doc_freq ={}, N=0, improved=False):
     """
     This function creates a count matrix where each row is a document and
     each column corresponds to a word in the vocabulary.
     If we are generating for the baseline model then (improved = False) then
     the value of element (i,j) is the count of the number of times the word
     j appears in document i.
-    Otherwise: The value of element (i,j) is the tf-idf score of the word j 
+    Otherwise: The value of element (i,j) is the tf-idf score of the word j
     for document i.
 
     Args:
@@ -862,6 +888,7 @@ def generate_matrix(ID_map, df, no_of_terms, d, improved=False):
         d (dict): mapping from the categories (corpora names) to numberic IDs
         improved (bool, optional): If improved different processing and scoring
         function. Defaults to False.
+        N (int): total number of documents (used for tf-idf)
 
     Returns:
         cats ([int]): true labels (y-input)
@@ -869,10 +896,10 @@ def generate_matrix(ID_map, df, no_of_terms, d, improved=False):
     """
     # Pre processing and getting the verses differently
     # depending on which model we are training
-    if improved:
-        verses = [preprocessing(i) for i in df[1]]
-    else:
-        verses = [tokenize(i) for i in df[1]]
+    # if improved:
+    #     verses = [preprocessing(i) for i in df[1]]
+    # else:
+    verses = [tokenize(i) for i in df[1]]
 
     # Getting true y-labels
     categories = [i for i in df[0]]
@@ -890,7 +917,7 @@ def generate_matrix(ID_map, df, no_of_terms, d, improved=False):
             word_idx = ID_map[word]
             # Different score function depending on model trained
             if improved:
-                S[i, word_idx] = tf_idf(doc_freq, count, word, N)
+                S[i, word_idx] = tf_idf(doc_freq, count, word, N) + count
             else:
                 S[i, word_idx] = count
 
@@ -990,37 +1017,11 @@ def scores(y_pred, y_true, d):
     return precisions, recalls, f1_scores
 
 
-def tf_idf(doc_freq, count, word, N):
-    """
-    Helper function that computes the tf-idf score for a term.
-
-    Args:
-        doc_freq (dict): dictionnary mapping a term with its
-        document frequency
-        count (int): Term frequency
-        word (String): Term considered
-        N (int): Total number of documents
-
-    Returns:
-        tf*idf (float): tf-idf score for the considered term.
-    """
-    try:
-        df = doc_freq[word]
-    except KeyError:
-        df = 0
-    tf = (1+math.log10(count))
-    try:
-        idf = math.log10(N/df)
-    except ZeroDivisionError:
-        idf = 0
-    return tf * idf
-
-
 def get_freq_improved(corpus_df):
     corpus_freq = dict()
     text = [corpus_df[1][i]+"\n" for i in range(corpus_df.shape[0])]
     for i in text:
-        for j in preprocessing(i):
+        for j in tokenize(i):
             if j in corpus_freq:
                 corpus_freq[j] += 1
             else:
@@ -1103,6 +1104,33 @@ if __name__ == '__main__':
 
     # TASK 2
     total, freqs, lengths = index_frequency()
+    
+    outss = ['yet', 'i', 'will', 'also', 'make', 'a', 'nation', 'of', 'the', 'son', 'of', 'the', 'bondwoman', 'because', 'he', 'is', 'your', 'seed', 
+             'so', 'i', 'swore', 'in', 'my', 'wrath', 'they', 'shall', 'not', 'enter', 'my', 'rest',
+             'pursue', 'peace', 'with', 'all', 'people', 'and', 'holiness', 'without', 'which', 'no', 'one', 'will', 'see', 'the', 'lord',
+             'and', 'they', 'let', 'go', 'the', 'anchors', 'and', 'left', 'them', 'in', 'the', 'sea', 'meanwhile', 'loosing', 'the', 'rudder', 'ropes', 'and', 'they', 'hoisted', 'the', 'mainsail', 'to', 'the', 'wind', 'and', 'made', 'for', 'shore',
+             'when', 'moses', 'saw', 'it', 'he', 'marveled', 'at', 'the', 'sight', 'and', 'as', 'he', 'drew', 'near', 'to', 'observe', 'the', 'voice', 'of', 'the', 'lord', 'came', 'to', 'him',
+             'and', 'he', 'turned', 'to', 'their', 'idols', 'and', 'asked', 'them', 'do', 'you', 'eat']
+    
+    ps = SnowballStemmer(language='english')
+    with open("temp.txt", "w") as t:
+        t.write("word, OT, NT, Quran\n")
+        for word in outss:
+            word = ps.stem(word)
+            try:
+                freq_OT = freqs['OT'][word]
+            except KeyError:
+                freq_OT = 0
+            try:
+                freq_NT = freqs['NT'][word]
+            except KeyError:
+                freq_NT = 0
+            try:
+                freq_Quran = freqs['Quran'][word]
+            except KeyError:
+                freq_Quran = 0
+            t.write('{},{},{},{}\n'.format(word, freq_OT, freq_NT, freq_Quran))
+    
     MIs, Chis = MI_X2_Res(total, freqs, lengths)
     ranked_m, ranked_c = generate_ranked_list(MIs, Chis)
     write_ranked(ranked_m, ranked_c)
@@ -1114,23 +1142,39 @@ if __name__ == '__main__':
     d, train_df, dev_df, test_df, original_df = dataset_splitting()
 
     # TASK 3 BASELINE
-    no_of_terms, ID_map_train, ID_map_dev, ID_map_test = ID_mapping(train_df,dev_df, test_df)
+    no_of_terms, ID_map_train, ID_map_dev, ID_map_test = ID_mapping(train_df, dev_df, test_df)
     y_train, X_train = generate_matrix(ID_map_train, train_df, no_of_terms, d)
     y_dev, X_dev = generate_matrix(ID_map_dev, dev_df, no_of_terms, d)
     y_test, X_test = generate_matrix(ID_map_test, test_df, no_of_terms, d)
     y_pred_dev, y_pred_train, y_pred_test = SVM_model(X_train, X_dev, X_test, y_train)
+    breakpoint = 0
+    
+    # Get some Misclassified examples from development set
+    print(d)
+    verses_copy = [tokenize(i) for i in dev_df[1]]
+    for i, (a, b) in enumerate(zip(y_dev, y_pred_dev)):
+        if breakpoint == 8:
+            break
+        if a != b:
+            print('Actual Label: ' + str(a) + "\n")
+            print('Predicted Label: ' + str(b) + "\n")
+            print('Verse: ')
+            print(verses_copy[i])
+            print("\n")
+            breakpoint += 1
+
     write_classification_baseline(y_train, y_dev, y_test,
                                   y_pred_dev, y_pred_train, y_pred_test, d)
 
-    # TASK 3 IMPROVED
+    # TASK 3 IMPROVED MODEL
     doc_freq = get_freq_improved(original_df)
-    no_of_terms, ID_map_train, ID_map_dev, ID_map_test = ID_mapping(train_df, dev_df, test_df, improved=True)
+    no_of_terms, ID_map_train, ID_map_dev, ID_map_test = ID_mapping(train_df, dev_df, test_df)
     y_train, X_train = generate_matrix(ID_map_train, train_df, no_of_terms, d,
                                        doc_freq, N, improved=True)
     y_dev, X_dev = generate_matrix(ID_map_dev, dev_df, no_of_terms, d, doc_freq,
                                    N, improved=True)
-    y_test, X_test = generate_matrix(ID_map_test, test_df, no_of_terms,d, doc_freq,
+    y_test, X_test = generate_matrix(ID_map_test, test_df, no_of_terms, d, doc_freq,
                                      N, improved=True)
-    y_pred_dev, y_pred_train, y_pred_test = SVM_model(X_train, X_dev, X_test, y_train, c=800)
+    y_pred_dev, y_pred_train, y_pred_test = SVM_model(X_train, X_dev, X_test, y_train, c=40)
     write_classification_improved(y_train, y_dev, y_test,
                                   y_pred_dev, y_pred_train, y_pred_test, d)
